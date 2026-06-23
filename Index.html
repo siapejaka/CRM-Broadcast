@@ -52,6 +52,22 @@
                 class="w-full py-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-xl text-sm transition shadow-md flex items-center justify-center space-x-2">
           <span x-text="submitting ? 'Memverifikasi...' : 'Masuk dengan Password'"></span>
         </button>
+
+        <div class="relative flex py-2 items-center">
+          <div class="flex-grow border-t border-slate-200"></div>
+          <span class="flex-shrink mx-4 text-slate-400 text-xs font-bold uppercase">Atau</span>
+          <div class="flex-grow border-t border-slate-200"></div>
+        </div>
+
+        <button type="button" @click="loginWithGoogleDirect()" :disabled="submitting"
+                class="w-full py-3 bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-50 text-slate-700 font-bold rounded-xl text-sm transition shadow-sm flex items-center justify-center space-x-2">
+          <svg class="w-4 h-4 mr-1" viewBox="0 0 24 24" width="24" height="24" xmlns="http://www.w3.org/2000/svg">
+            <g transform="matrix(1, 0, 0, 1, 0, 0)">
+              <path d="M21.35,11.1H12v2.7h5.38C16.88,15.22,15.14,16.5,12,16.5c-3.03,0-5.59-2.05-6.51-4.8c-0.23-0.69-0.37-1.44-0.37-2.2s0.13-1.51,0.37-2.2c0.92-2.75,3.48-4.8,6.51-4.8c1.64,0,3.13,0.57,4.3,1.69l2.02-2.02C16.53,0.41,14.38,0,12,0C7.31,0,3.25,2.71,1.29,6.66C0.47,8.31,0,10.11,0,12s0.47,3.69,1.29,5.34C3.25,21.29,7.31,24,12,24c4.8,0,8.85-3.11,10.71-7.56C23.57,14.77,24,13.11,24,11.4C24,11.2,23.98,11,21.35,11.1Z" fill="#EA4335" />
+            </g>
+          </svg>
+          <span>Masuk dengan Google</span>
+        </button>
       </form>
     </div>
   </div>
@@ -337,10 +353,6 @@
         <div class="flex items-center space-x-2 sm:space-x-3">
           <!-- CRM / Leads Actions -->
           <div x-show="activeTab === 'leads'" class="flex items-center space-x-2">
-            <button @click="syncGoogleContacts()" :disabled="syncingGoogle" class="flex items-center space-x-1 sm:space-x-2 px-2.5 py-1.5 sm:px-3 sm:py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs sm:text-sm font-medium transition shadow-sm disabled:opacity-50">
-              <i data-lucide="refresh-cw" :class="syncingGoogle ? 'animate-spin' : ''" class="w-3.5 h-3.5 sm:w-4 sm:h-4"></i>
-              <span x-text="syncingGoogle ? 'Menyinkronkan...' : 'Sync Google Contacts'"></span>
-            </button>
             <button @click="openImportModal()" class="flex items-center space-x-1 sm:space-x-2 px-2.5 py-1.5 sm:px-3 sm:py-2 border border-slate-200 rounded-lg text-xs sm:text-sm font-medium text-slate-600 hover:bg-slate-50 transition">
               <i data-lucide="file-up" class="w-3.5 h-3.5 sm:w-4 sm:h-4"></i>
               <span class="hidden sm:inline">Import Excel/CSV</span>
@@ -507,6 +519,66 @@
 
         <!-- Leads (Contacts) Tab -->
         <div x-show="!loading && activeTab === 'leads'" class="space-y-4 sm:space-y-6">
+          
+          <!-- Google Contacts Multi-Account Connection Manager Widget -->
+          <div class="bg-white p-4 sm:p-6 rounded-xl border border-slate-200 shadow-sm">
+            <div class="flex items-center space-x-2 mb-4">
+              <i data-lucide="key-round" class="w-5 h-5 text-indigo-600"></i>
+              <div>
+                <h3 class="text-sm font-bold text-slate-800 uppercase tracking-wider">Koneksi Google Contacts per Nomor CS</h3>
+                <p class="text-xs text-slate-400">Hubungkan masing-masing nomor CS dengan akun Gmail yang sesuai untuk menghindari salah sinkronisasi.</p>
+              </div>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <template x-for="cs in getFilteredCSNumbersForForm()" :key="cs.id">
+                <div class="border border-slate-200 rounded-xl p-4 bg-slate-50/50 flex flex-col justify-between space-y-3">
+                  <div class="flex items-start justify-between">
+                    <div>
+                      <h4 class="font-bold text-slate-800 text-sm" x-text="cs.cs_name"></h4>
+                      <p class="text-xs text-slate-500 font-mono" x-text="displayPhone(cs.whatsapp_number)"></p>
+                    </div>
+                    <div>
+                      <template x-if="googleEmails[cs.whatsapp_number]">
+                        <span class="px-2.5 py-1 bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-bold rounded-full flex items-center space-x-1">
+                          <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                          <span x-text="googleEmails[cs.whatsapp_number]"></span>
+                        </span>
+                      </template>
+                      <template x-if="!googleEmails[cs.whatsapp_number]">
+                        <span class="px-2.5 py-1 bg-rose-50 border border-rose-200 text-rose-700 text-[11px] font-bold rounded-full flex items-center space-x-1">
+                          <span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                          <span>Belum Terhubung</span>
+                        </span>
+                      </template>
+                    </div>
+                  </div>
+                  
+                  <div class="flex items-center space-x-2 pt-2 border-t border-slate-100">
+                    <!-- Tombol Hubungkan / Login Google -->
+                    <button type="button" @click="connectGmailForCS(cs.whatsapp_number)" 
+                            class="flex-1 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-semibold transition flex items-center justify-center space-x-1.5">
+                      <i data-lucide="link" class="w-3.5 h-3.5"></i>
+                      <span x-text="googleEmails[cs.whatsapp_number] ? 'Ganti Gmail' : 'Hubungkan Gmail'"></span>
+                    </button>
+
+                    <!-- Tombol Sync (Hanya aktif jika status Connected) -->
+                    <button type="button" @click="syncGoogleContactsForCS(cs.whatsapp_number)" 
+                            :disabled="!googleEmails[cs.whatsapp_number] || syncingGoogleCS[cs.whatsapp_number]"
+                            class="flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white rounded-lg text-xs font-semibold transition flex items-center justify-center space-x-1.5 shadow-sm">
+                      <i data-lucide="refresh-cw" :class="syncingGoogleCS[cs.whatsapp_number] ? 'animate-spin' : ''" class="w-3.5 h-3.5"></i>
+                      <span x-text="syncingGoogleCS[cs.whatsapp_number] ? 'Menyinkronkan...' : 'Sync Kontak'"></span>
+                    </button>
+                  </div>
+                </div>
+              </template>
+              <template x-if="getFilteredCSNumbersForForm().length === 0">
+                <div class="col-span-full p-6 text-center text-xs text-slate-400 italic">
+                  Tidak ada nomor CS yang dikaitkan dengan akun Anda. Silakan hubungi Admin untuk mengatur alokasi CS Anda.
+                </div>
+              </template>
+            </div>
+          </div>
           
           <!-- Segment Management Bar (Directly inside Contacts Tab) -->
           <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
@@ -2891,6 +2963,10 @@
         wahaPollTimer: null,
         qrModal: { open: false, whatsapp: '', qrImage: '', loading: false, statusText: '', timer: null },
 
+        // Google Multi-Account State
+        googleEmails: {},
+        syncingGoogleCS: {},
+
         // Filters & Selections
         leadSearch: '',
         selectedLeadTagFilter: '',
@@ -3502,25 +3578,74 @@
           }, 50);
         },
 
-        syncGoogleContacts() {
-          this.syncingGoogle = true;
-          this.showToast('Menghubungkan ke Google Contacts...', 'info');
-          
+        loginWithGoogleDirect() {
+          this.submitting = true;
+          this.showToast('Menghubungkan ke Akun Google Anda...', 'info');
           google.script.run
             .withSuccessHandler((res) => {
-              this.syncingGoogle = false;
+              this.submitting = false;
               if (res.ok) {
-                this.showCustomAlert('Sinkronisasi Berhasil', 'Berhasil mengimpor ' + res.importedCount + ' kontak baru dari Google Contacts Anda tanpa duplikasi.');
-                this.fetchData(true); // refresh data secara senyap
+                this.currentUser = res.user;
+                localStorage.setItem('crm_current_user', JSON.stringify(res.user));
+                this.showToast('Selamat datang kembali, ' + res.user.username + '!', 'success');
+                this.fetchData();
               } else {
-                this.showCustomAlert('Sinkronisasi Gagal', 'Gagal menyinkronkan kontak: ' + res.message);
+                this.showToast(res.message, 'error');
               }
             })
             .withFailureHandler((err) => {
-              this.syncingGoogle = false;
-              this.showCustomAlert('Error Koneksi', 'Terjadi kesalahan sistem: ' + err.toString());
+              this.submitting = false;
+              this.showToast('Gagal login: ' + err.toString(), 'error');
             })
-            .importGoogleContacts();
+            .loginWithActiveGoogleAccount();
+        },
+
+        connectGmailForCS(csNumber) {
+          this.showToast('Memverifikasi Akun Google yang sedang aktif...', 'info');
+          google.script.run
+            .withSuccessHandler((res) => {
+              if (res.ok) {
+                this.googleEmails[csNumber] = res.email;
+                this.showToast('Nomor ' + this.displayPhone(csNumber) + ' berhasil terhubung ke Gmail: ' + res.email, 'success');
+              } else {
+                this.showToast('Gagal menghubungkan: ' + res.message, 'error');
+              }
+              setTimeout(() => { lucide.createIcons(); }, 50);
+            })
+            .withFailureHandler((err) => {
+              this.showToast('Koneksi terputus: ' + err.toString(), 'error');
+            })
+            .getActiveGoogleEmail();
+        },
+
+        syncGoogleContactsForCS(csNumber) {
+          var email = this.googleEmails[csNumber];
+          if (!email) {
+            this.showToast('Hubungkan akun Gmail Anda terlebih dahulu!', 'error');
+            return;
+          }
+
+          this.syncingGoogleCS[csNumber] = true;
+          var csName = this.getCSNameByNumber(csNumber);
+          this.showToast('Menyinkronkan kontak dari Gmail ' + email + ' ke nomor CS ' + csName + '...', 'info');
+          
+          google.script.run
+            .withSuccessHandler((res) => {
+              this.syncingGoogleCS[csNumber] = false;
+              if (res.ok) {
+                this.showCustomAlert('Sinkronisasi Sukses', 'Berhasil menarik ' + res.importedCount + ' kontak baru dari Gmail (' + email + ') dan otomatis dialokasikan ke CS: ' + csName + '.');
+                this.fetchData(true); // silent refresh
+              } else {
+                this.showCustomAlert('Sinkronisasi Gagal', 'Gagal menyinkronkan kontak: ' + res.message);
+              }
+              setTimeout(() => { lucide.createIcons(); }, 50);
+            })
+            .withFailureHandler((err) => {
+              this.syncingGoogleCS[csNumber] = false;
+              this.showCustomAlert('Error Koneksi', 'Gagal terhubung ke Google Apps Script: ' + err.toString());
+              setTimeout(() => { lucide.createIcons(); }, 50);
+            })
+            .importGoogleContacts(csNumber);
         },
 
         toggleAutoSync() {
@@ -4219,29 +4344,7 @@
           this.importModal.parsed = mapped;
         },
 
-        submitImport() {
-          var totalRows = this.importModal.parsed.length;
-          this.importModal.open = false; // Close modal immediately so user can keep working
-          
-          var taskId = Date.now();
-          this.backgroundTasks.push({
-            id: taskId,
-            name: 'Import ' + totalRows + ' Kontak',
-            status: 'processing',
-            progressText: 'Sedang menulis data ke Google Sheets...'
-          });
-          
-          setTimeout(() => { lucide.createIcons(); }, 50);
-
-          google.script.run
-            .withSuccessHandler((res) => {
-              var task = this.backgroundTasks.find(t => t.id === taskId);
-              if (res.ok) {
-                if (task) {
-                  task.status = 'success';
-                  task.progressText = 'Sukses mengimpor ' + totalRows + ' kontak!';
-                }
-        handleBubbleImageUpload(event, bIndex) {
+        downloadExcelTemplate() {
           // Buat data dummy
           var data = [
             ["Nama Lengkap", "Nomor WhatsApp", "Label Tags", "Owner WhatsApp (CS)"],

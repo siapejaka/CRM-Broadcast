@@ -265,27 +265,22 @@ function loginUser(username, password) {
   }
 }
 
-// Google Login Token Verification & Session Handler
-function loginWithGoogleToken(accessToken) {
+// Google Native Login verification using active session (No Client ID needed)
+function loginWithActiveGoogleAccount() {
   try {
     setupDatabase();
-    var url = 'https://www.googleapis.com/oauth2/v3/userinfo';
-    var response = UrlFetchApp.fetch(url, {
-      headers: { 'Authorization': 'Authorization Bearer ' + accessToken },
-      muteHttpExceptions: true
-    });
-    if (response.getResponseCode() !== 200) {
-      return { ok: false, message: 'Gagal memverifikasi akun Google dengan server.' };
+    var email = Session.getEffectiveUser().getEmail();
+    if (!email) {
+      return { ok: false, message: 'Tidak dapat mendeteksi akun Google Anda. Pastikan Anda login ke Google di browser ini.' };
     }
-    var userInfo = JSON.parse(response.getContentText());
-    var email = userInfo.email.toLowerCase();
     
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     var sheet = ss.getSheetByName('Users');
     var users = getSheetDataAsObjects(sheet);
     
+    var cleanEmail = email.toLowerCase().trim();
     for (var i = 0; i < users.length; i++) {
-      if (users[i].username.toString().toLowerCase() === email) {
+      if (users[i].username.toString().toLowerCase() === cleanEmail) {
         return {
           ok: true,
           user: {
@@ -301,6 +296,19 @@ function loginWithGoogleToken(accessToken) {
     return { ok: false, message: 'Email Google "' + email + '" belum didaftarkan di Manajemen User oleh Admin.' };
   } catch (err) {
     return { ok: false, message: err.toString() };
+  }
+}
+
+// Helper to get active Google Account Email
+function getActiveGoogleEmail() {
+  try {
+    var email = Session.getEffectiveUser().getEmail();
+    if (!email) {
+      return { ok: true, email: 'Gmail Aktif' };
+    }
+    return { ok: true, email: email };
+  } catch (e) {
+    return { ok: true, email: 'Gmail Aktif' };
   }
 }
 
@@ -1980,7 +1988,8 @@ function mintaIzinGoogle() {
 }
 
 // Mengambil kontak dari Google Contacts dan menyimpannya ke Sheets secara aman (Anti-Duplikasi & JSON-Safe)
-function importGoogleContacts() {
+// Berjalan secara native di sisi user yang sedang login di browser (executeAs: USER_ACCESSING)
+function importGoogleContacts(linkedCSNumber) {
   try {
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     var sheet = ss.getSheetByName('Leads');
@@ -1989,27 +1998,22 @@ function importGoogleContacts() {
       sheet = ss.getSheetByName('Leads');
     }
     
-    // Tarik kontak dari Google People API v1
-    var peopleFeed;
+    // Ambil kontak menggunakan ContactsApp (100% Native, Tanpa Advanced Service People API!)
+    var contacts;
     try {
-      peopleFeed = People.People.Connections.list('people/me', {
-        personFields: 'names,phoneNumbers,emailAddresses',
-        pageSize: 1000
-      });
+      contacts = ContactsApp.getContacts();
     } catch (err) {
-      throw new Error('Gagal mengakses Google Contacts. Pastikan Anda telah mengizinkan otorisasi kontak: ' + err.toString());
+      throw new Error('Gagal mengakses Google Contacts. Pastikan Anda telah menyetujui izin kontak: ' + err.toString());
     }
 
-    var connections = peopleFeed.connections || [];
-    if (connections.length === 0) {
+    if (contacts.length === 0) {
       return { ok: true, importedCount: 0, message: 'Tidak ada kontak yang ditemukan di Google Contacts Anda.' };
     }
 
     var data = sheet.getDataRange().getValues();
     var headers = data[0];
-    var emailColIndex = headers.indexOf('Email');
     
-    // Jika kolom Email belum ada karena database lama, buat kolom baru secara dinamis
+    var emailColIndex = headers.indexOf('Email');
     if (emailColIndex === -1) {
       sheet.getRange(1, headers.length + 1).setValue('Email');
       data = sheet.getDataRange().getValues();
@@ -2017,10 +2021,16 @@ function importGoogleContacts() {
       emailColIndex = headers.indexOf('Email');
     }
 
-    // Map email yang sudah terdaftar di Sheets untuk mencegah duplikasi
+    // Ambil semua WhatsApp & Email yang sudah terdaftar di database untuk menghindari duplikat
+    var existingPhones = {};
     var existingEmails = {};
     for (var i = 1; i < data.length; i++) {
-      var emailVal = data[i][emailColIndex];
+      var phoneVal = data[i][2]; // Kolom WhatsApp (index 2)
+      var emailVal = data[i][emailColIndex]; // Kolom Email
+      
+      if (phoneVal) {
+        existingPhones[normalizePhoneNumber(phoneVal)] = true;
+      }
       if (emailVal) {
         existingEmails[emailVal.toString().toLowerCase().trim()] = true;
       }
@@ -2030,59 +2040,68 @@ function importGoogleContacts() {
     var importedCount = 0;
     var rowsToAdd = [];
 
-    for (var j = 0; j < connections.length; j++) {
-      var person = connections[j];
+    // Tentukan nomor CS tujuan alokasi
+    var finalOwner = linkedCSNumber ? normalizePhoneNumber(linkedCSNumber) : '';
+
+    for (var j = 0; j < contacts.length; j++) {
+      var person = contacts[j];
       
-      // Ambil Nama
-      var name = 'No Name';
-      if (person.names && person.names.length > 0) {
-        name = person.names[0].displayName || 'No Name';
-      }
+      // 1. Ambil Nama
+      var name = person.getFullName() || 'No Name';
 
-      // Ambil Email utama
-      var email = '';
-      if (person.emailAddresses && person.emailAddresses.length > 0) {
-        email = person.emailAddresses[0].value || '';
-      }
-
-      // Ambil Nomor Telepon utama
+      // 2. Ambil Nomor Telepon
+      var phones = person.getPhones();
       var phone = '';
-      if (person.phoneNumbers && person.phoneNumbers.length > 0) {
-        phone = person.phoneNumbers[0].value || '';
+      if (phones.length > 0) {
+        phone = phones[0].getPhoneNumber() || '';
       }
-
       var normalizedPhone = phone ? normalizePhoneNumber(phone) : '';
+
+      // 3. Ambil Email
+      var emails = person.getEmails();
+      var email = '';
+      if (emails.length > 0) {
+        email = emails[0].getAddress() || '';
+      }
       var cleanEmail = email.toLowerCase().trim();
 
-      // Lewati kontak jika tidak memiliki email (karena validasi duplikasi berbasis email)
-      if (!cleanEmail) continue;
+      // Lewati jika kontak tidak memiliki nomor telepon sama sekali
+      if (!normalizedPhone) continue;
 
-      // Validasi duplikasi email
-      if (!existingEmails[cleanEmail]) {
+      // Cek Duplikasi: Lewati jika nomor telepon atau email sudah ada di database CRM
+      var isPhoneDuplicate = existingPhones[normalizedPhone];
+      var isEmailDuplicate = cleanEmail ? existingEmails[cleanEmail] : false;
+
+      // PERBAIKAN BUG: Gunakan !isEmailDuplicate agar kontak baru yang email-nya belum terdaftar bisa masuk
+      if (!isPhoneDuplicate && !isEmailDuplicate) {
         var id = 'L' + Utilities.getUuid().substring(0, 8).toUpperCase();
         
-        // Buat baris baru sesuai urutan header Leads database
         var newRow = [
           id,
           name,
           normalizedPhone,
           'Google Contacts', // Tag Sumber
-          '',                // Owner WhatsApp
+          finalOwner,        // Owner WhatsApp (Otomatis terisi nomor CS yang melakukan sync)
           now,               // Created At
           '',                // Last Broadcast At
           'Unchecked',       // Number Status
           '',                // Last Number Check At
           '',                // Inactive Reason
-          email              // Email
+          cleanEmail         // Email
         ];
         
         rowsToAdd.push(newRow);
-        existingEmails[cleanEmail] = true;
+        
+        // Tandai sebagai terdaftar lokal agar tidak ganda di dalam batch yang sama
+        existingPhones[normalizedPhone] = true;
+        if (cleanEmail) {
+          existingEmails[cleanEmail] = true;
+        }
         importedCount++;
       }
     }
 
-    // Lakukan bulk append ke Google Sheets jika ada data baru
+    // Tulis data baru secara bulk (sekaligus) ke Google Sheets
     if (rowsToAdd.length > 0) {
       var startRow = sheet.getLastRow() + 1;
       sheet.getRange(startRow, 1, rowsToAdd.length, headers.length).setValues(rowsToAdd);
@@ -2092,4 +2111,10 @@ function importGoogleContacts() {
   } catch (err) {
     return { ok: false, message: err.toString() };
   }
+}
+
+// Fungsi pembantu untuk memaksa Google memunculkan dialog otorisasi di editor GAS
+function pemicuOtorisasiKontak() {
+  var test = People.People.Connections.list('people/me', { pageSize: 1 });
+  Logger.log('Otorisasi berhasil dikonfirmasi! Kontak Anda aman terhubung.');
 }
