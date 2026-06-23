@@ -25,8 +25,39 @@
 </head>
 <body class="bg-slate-50 text-slate-800 font-sans antialiased" x-data="app()" x-init="init()" x-cloak>
 
+  <!-- Login Screen Overlay -->
+  <div x-show="!currentUser" class="fixed inset-0 bg-slate-900 flex items-center justify-center p-4 z-50">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 border border-slate-200">
+      <div class="flex flex-col items-center text-center mb-8">
+        <div class="p-3 bg-indigo-600 rounded-2xl text-white mb-3 shadow-lg shadow-indigo-200">
+          <i data-lucide="users-round" class="w-8 h-8"></i>
+        </div>
+        <h2 class="text-2xl font-black text-slate-800 tracking-tight">CRM Contact Hub</h2>
+        <p class="text-xs text-slate-400 mt-1">Silakan masuk menggunakan akun tim Anda</p>
+      </div>
+
+      <form @submit.prevent="submitLogin()" class="space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Username / Email Google</label>
+          <input type="text" x-model="loginForm.username" required placeholder="Ketik username atau email..."
+                 class="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Password</label>
+          <input type="password" x-model="loginForm.password" required placeholder="••••••••"
+                 class="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50">
+        </div>
+
+        <button type="submit" :disabled="submitting"
+                class="w-full py-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-xl text-sm transition shadow-md flex items-center justify-center space-x-2">
+          <span x-text="submitting ? 'Memverifikasi...' : 'Masuk dengan Password'"></span>
+        </button>
+      </form>
+    </div>
+  </div>
+
   <!-- Main Layout -->
-  <div class="flex h-screen overflow-hidden">
+  <div x-show="currentUser" class="flex h-screen overflow-hidden">
 
     <!-- Mobile Sidebar Drawer (Backdrop) -->
     <div x-show="mobileSidebarOpen" 
@@ -74,7 +105,7 @@
           <span>Kelola Kontak</span>
         </button>
 
-        <button @click="activeTab = 'tags_manager'; mobileSidebarOpen = false;" 
+        <button x-show="currentUser && currentUser.role === 'Super Admin'" @click="activeTab = 'tags_manager'; mobileSidebarOpen = false;" 
                 :class="activeTab === 'tags_manager' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'"
                 class="w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-sm font-medium transition duration-150">
           <i data-lucide="tags" class="w-5 h-5"></i>
@@ -88,7 +119,7 @@
           <span>Template Pesan</span>
         </button>
 
-        <button @click="activeTab = 'products'; mobileSidebarOpen = false;" 
+        <button x-show="currentUser && currentUser.role === 'Super Admin'" @click="activeTab = 'products'; mobileSidebarOpen = false;" 
                 :class="activeTab === 'products' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'"
                 class="w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-sm font-medium transition duration-150">
           <i data-lucide="package" class="w-5 h-5"></i>
@@ -109,25 +140,32 @@
           <span>Riwayat & Status</span>
         </button>
 
-        <button @click="activeTab = 'tag_rules'; mobileSidebarOpen = false;" 
+        <button x-show="currentUser && currentUser.role === 'Super Admin'" @click="activeTab = 'tag_rules'; mobileSidebarOpen = false;" 
                 :class="activeTab === 'tag_rules' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'"
                 class="w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-sm font-medium transition duration-150">
           <i data-lucide="git-fork" class="w-5 h-5"></i>
           <span>Otomatisasi Tag</span>
         </button>
 
-        <button @click="activeTab = 'cs_numbers'; mobileSidebarOpen = false;" 
+        <button x-show="currentUser && currentUser.role === 'Super Admin'" @click="activeTab = 'cs_numbers'; mobileSidebarOpen = false;" 
                 :class="activeTab === 'cs_numbers' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'"
                 class="w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-sm font-medium transition duration-150">
           <i data-lucide="headphones" class="w-5 h-5"></i>
           <span>Kelola CS</span>
         </button>
 
-        <button @click="activeTab = 'settings'; mobileSidebarOpen = false;" 
+        <button x-show="currentUser && currentUser.role === 'Super Admin'" @click="activeTab = 'settings'; mobileSidebarOpen = false;" 
                 :class="activeTab === 'settings' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'"
                 class="w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-sm font-medium transition duration-150">
           <i data-lucide="sliders" class="w-5 h-5"></i>
           <span>Pengaturan Jeda</span>
+        </button>
+
+        <button x-show="currentUser && currentUser.role === 'Super Admin'" @click="activeTab = 'users_manager'; mobileSidebarOpen = false;" 
+                :class="activeTab === 'users_manager' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'"
+                class="w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-sm font-medium transition duration-150">
+          <i data-lucide="shield-alert" class="w-5 h-5"></i>
+          <span>Manajemen User</span>
         </button>
       </nav>
 
@@ -183,7 +221,7 @@
           <span>Kelola Kontak</span>
         </button>
 
-        <button @click="activeTab = 'tags_manager'" 
+        <button x-show="currentUser && currentUser.role === 'Super Admin'" @click="activeTab = 'tags_manager'" 
                 :class="activeTab === 'tags_manager' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'"
                 class="w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-sm font-medium transition duration-150">
           <i data-lucide="tags" class="w-5 h-5"></i>
@@ -197,7 +235,7 @@
           <span>Template Pesan</span>
         </button>
 
-        <button @click="activeTab = 'products'" 
+        <button x-show="currentUser && currentUser.role === 'Super Admin'" @click="activeTab = 'products'" 
                 :class="activeTab === 'products' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'"
                 class="w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-sm font-medium transition duration-150">
           <i data-lucide="package" class="w-5 h-5"></i>
@@ -218,25 +256,32 @@
           <span>Riwayat & Status</span>
         </button>
 
-        <button @click="activeTab = 'tag_rules'" 
+        <button x-show="currentUser && currentUser.role === 'Super Admin'" @click="activeTab = 'tag_rules'" 
                 :class="activeTab === 'tag_rules' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'"
                 class="w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-sm font-medium transition duration-150">
           <i data-lucide="git-fork" class="w-5 h-5"></i>
           <span>Otomatisasi Tag</span>
         </button>
 
-        <button @click="activeTab = 'cs_numbers'" 
+        <button x-show="currentUser && currentUser.role === 'Super Admin'" @click="activeTab = 'cs_numbers'" 
                 :class="activeTab === 'cs_numbers' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'"
                 class="w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-sm font-medium transition duration-150">
           <i data-lucide="headphones" class="w-5 h-5"></i>
           <span>Kelola CS</span>
         </button>
 
-        <button @click="activeTab = 'settings'" 
+        <button x-show="currentUser && currentUser.role === 'Super Admin'" @click="activeTab = 'settings'" 
                 :class="activeTab === 'settings' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'"
                 class="w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-sm font-medium transition duration-150">
           <i data-lucide="sliders" class="w-5 h-5"></i>
           <span>Pengaturan Jeda</span>
+        </button>
+
+        <button x-show="currentUser && currentUser.role === 'Super Admin'" @click="activeTab = 'users_manager'" 
+                :class="activeTab === 'users_manager' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'"
+                class="w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-sm font-medium transition duration-150">
+          <i data-lucide="shield-alert" class="w-5 h-5"></i>
+          <span>Manajemen User</span>
         </button>
       </nav>
 
@@ -264,6 +309,14 @@
             <i data-lucide="refresh-cw" :class="isSyncing ? 'animate-spin text-indigo-400' : ''" class="w-3.5 h-3.5"></i>
           </button>
         </div>
+
+        <!-- Log Out Button -->
+        <div class="pt-2 border-t border-slate-900 mt-2">
+          <button @click="logoutUser()" class="w-full flex items-center justify-between px-3 py-2 bg-rose-950/40 hover:bg-rose-900 text-rose-300 rounded-lg text-xs font-semibold transition">
+            <span>Keluar Akun (<span x-text="currentUser ? currentUser.username : ''"></span>)</span>
+            <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
       </div>
     </aside>
 
@@ -284,6 +337,10 @@
         <div class="flex items-center space-x-2 sm:space-x-3">
           <!-- CRM / Leads Actions -->
           <div x-show="activeTab === 'leads'" class="flex items-center space-x-2">
+            <button @click="syncGoogleContacts()" :disabled="syncingGoogle" class="flex items-center space-x-1 sm:space-x-2 px-2.5 py-1.5 sm:px-3 sm:py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs sm:text-sm font-medium transition shadow-sm disabled:opacity-50">
+              <i data-lucide="refresh-cw" :class="syncingGoogle ? 'animate-spin' : ''" class="w-3.5 h-3.5 sm:w-4 sm:h-4"></i>
+              <span x-text="syncingGoogle ? 'Menyinkronkan...' : 'Sync Google Contacts'"></span>
+            </button>
             <button @click="openImportModal()" class="flex items-center space-x-1 sm:space-x-2 px-2.5 py-1.5 sm:px-3 sm:py-2 border border-slate-200 rounded-lg text-xs sm:text-sm font-medium text-slate-600 hover:bg-slate-50 transition">
               <i data-lucide="file-up" class="w-3.5 h-3.5 sm:w-4 sm:h-4"></i>
               <span class="hidden sm:inline">Import Excel/CSV</span>
@@ -300,16 +357,28 @@
             <span>Tambah Tag</span>
           </button>
 
+          <!-- Segments Actions -->
+          <button x-show="activeTab === 'segments'" @click="openSegmentForm()" class="flex items-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition shadow-sm">
+            <i data-lucide="plus" class="w-4 h-4"></i>
+            <span>Buat Segmentasi</span>
+          </button>
+
           <!-- Products Actions -->
           <button x-show="activeTab === 'products'" @click="openProductForm()" class="flex items-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition shadow-sm">
             <i data-lucide="plus" class="w-4 h-4"></i>
             <span>Tambah Produk</span>
           </button>
 
-          <!-- Templates Actions -->
+          <!-- templates Actions -->
           <button x-show="activeTab === 'templates'" @click="openTemplateForm()" class="flex items-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition shadow-sm">
             <i data-lucide="plus" class="w-4 h-4"></i>
             <span>Buat Template</span>
+          </button>
+
+          <!-- User Management Actions -->
+          <button x-show="activeTab === 'users_manager'" @click="openUserForm()" class="flex items-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition shadow-sm">
+            <i data-lucide="plus" class="w-4 h-4"></i>
+            <span>Tambah User</span>
           </button>
 
           <!-- Broadcasts Actions Removed (Page is now full content Creator) -->
@@ -404,9 +473,9 @@
                     <h5 class="font-semibold text-slate-800 text-sm sm:text-base mb-1">Bulk Import</h5>
                     <p class="text-xs text-slate-500">Salin / tempel ribuan kontak dari Excel.</p>
                   </button>
-                  <button @click="activeTab = 'leads'" class="p-4 bg-slate-50 rounded-lg text-left hover:bg-indigo-50 hover:text-indigo-700 transition">
-                    <h5 class="font-semibold text-slate-800 text-sm sm:text-base mb-1">Filter Segmentasi</h5>
-                    <p class="text-xs text-slate-500">Filter kontak otomatis dengan tag di tab Kontak.</p>
+                  <button @click="activeTab = 'segments'" class="p-4 bg-slate-50 rounded-lg text-left hover:bg-indigo-50 hover:text-indigo-700 transition">
+                    <h5 class="font-semibold text-slate-800 text-sm sm:text-base mb-1">Buat Segmentasi</h5>
+                    <p class="text-xs text-slate-500">Filter kontak otomatis dengan tag rules.</p>
                   </button>
                 </div>
               </div>
@@ -471,11 +540,28 @@
           </div>
 
           <div class="flex flex-col gap-4 bg-white p-4 rounded-xl border border-slate-200">
-            <!-- Search & Filters -->
-            <div class="relative w-full">
-              <i data-lucide="search" class="w-5 h-5 text-slate-400 absolute left-3 top-2.5"></i>
-              <input type="text" x-model="leadSearch" placeholder="Cari kontak berdasarkan nama, whatsapp, tag..." 
-                     class="pl-10 pr-4 py-2 w-full border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+            <!-- Search & Filters (With Broadcast Status Filter) -->
+            <div class="flex flex-col md:flex-row gap-3">
+              <div class="relative flex-1">
+                <i data-lucide="search" class="w-5 h-5 text-slate-400 absolute left-3 top-2.5"></i>
+                <input type="text" x-model="leadSearch" placeholder="Cari kontak berdasarkan nama, whatsapp, tag..." 
+                       class="pl-10 pr-4 py-2 w-full border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+              </div>
+              
+              <!-- Filter Status Broadcast Terakhir -->
+              <div class="w-full md:w-72">
+                <select x-model="selectedBroadcastStatusFilter"
+                        class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white font-medium text-slate-700">
+                  <option value="">-- Semua Riwayat Kirim --</option>
+                  <option value="never">Belum Pernah Di-broadcast 🆕</option>
+                  <option value="sent_any">Sudah Pernah Di-broadcast ✉️</option>
+                  <option value="Read">Pesan Sudah Dibaca (Read) 🟢</option>
+                  <option value="Delivered">Pesan Sudah Diterima (Delivered) 🔵</option>
+                  <option value="Sent">Baru Terkirim (Sent) 🟡</option>
+                  <option value="Failed">Gagal Terkirim (Failed) 🔴</option>
+                  <option value="Invalid Number">Nomor Tidak Valid (Invalid WA) ❌</option>
+                </select>
+              </div>
             </div>
 
             <!-- Horizontal Tag Filters -->
@@ -571,29 +657,50 @@
                         </div>
                       </td>
                       <td class="px-6 py-4 text-slate-500" x-text="displayPhone(lead.owner_whatsapp) || '-'"></td>
-                      <td class="px-6 py-4">
-                        <template x-if="lead.number_status === 'Active'">
-                          <span class="px-2 py-1 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold rounded-full">Aktif</span>
+                      <td class="px-6 py-4" x-data="{ currentStatus: getContactStatus(lead) }">
+                        <template x-if="currentStatus === 'Read'">
+                          <span class="px-2 py-1 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold rounded-full shadow-sm" title="Pesan telah dibaca oleh pelanggan">Read</span>
                         </template>
-                        <template x-if="lead.number_status === 'Inactive'">
-                          <span class="px-2 py-1 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold rounded-full cursor-help" :title="lead.inactive_reason || 'Nomor mati'">Tidak Aktif</span>
+                        <template x-if="currentStatus === 'Delivered'">
+                          <span class="px-2 py-1 bg-teal-50 border border-teal-200 text-teal-700 text-xs font-bold rounded-full shadow-sm" title="Pesan telah diterima di ponsel pelanggan">Delivered</span>
                         </template>
-                        <template x-if="!lead.number_status || lead.number_status === 'Unchecked'">
+                        <template x-if="currentStatus === 'Sent' || currentStatus === 'Success'">
+                          <span class="px-2 py-1 bg-sky-50 border border-sky-200 text-sky-700 text-xs font-bold rounded-full shadow-sm" title="Pesan sukses terkirim dari server">Sent</span>
+                        </template>
+                        <template x-if="currentStatus === 'Invalid Number'">
+                          <span class="px-2 py-1 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold rounded-full cursor-help shadow-sm" :title="lead.inactive_reason || 'Nomor tidak terdaftar di WhatsApp'">Invalid WA</span>
+                        </template>
+                        <template x-if="currentStatus === 'Failed'">
+                          <span class="px-2 py-1 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold rounded-full cursor-help shadow-sm" :title="lead.inactive_reason || 'Gagal terkirim setelah batas percobaan maksimal'">Failed</span>
+                        </template>
+                        <template x-if="currentStatus === 'Processing'">
+                          <span class="px-2 py-1 bg-amber-50 border border-amber-200 text-amber-700 text-xs font-bold rounded-full animate-pulse shadow-sm" title="Sedang diproses dalam antrean jeda anti-ban">Processing</span>
+                        </template>
+                        <template x-if="currentStatus === 'Unchecked'">
                           <span class="px-2 py-1 bg-slate-100 border border-slate-200 text-slate-500 text-xs font-medium rounded-full">Belum Dicek</span>
                         </template>
                       </td>
                       <td class="px-6 py-4">
-                        <template x-if="lead.last_broadcast_at">
-                          <span :class="getBroadcastRecencyClass(lead.last_broadcast_at)"
-                                class="px-2.5 py-1 rounded-full text-xs font-bold border inline-flex items-center space-x-1"
-                                :title="'Tanggal: ' + formatDateTime(lead.last_broadcast_at)">
-                            <i data-lucide="clock" class="w-3 h-3"></i>
-                            <span x-text="getBroadcastRecencyLabel(lead.last_broadcast_at)"></span>
-                          </span>
-                        </template>
-                        <template x-if="!lead.last_broadcast_at">
-                          <span class="text-xs text-slate-400 italic">Belum Pernah</span>
-                        </template>
+                        <div x-data="{ info: getLastBroadcastInfo(lead.id) }">
+                          <template x-if="info">
+                            <div class="space-y-1">
+                              <!-- Nama Campaign -->
+                              <div class="text-xs font-bold text-slate-700 truncate max-w-[160px]" :title="info.campaignName" x-text="info.campaignName"></div>
+                              <!-- Status Pengiriman & Waktu Relatif -->
+                              <div class="flex items-center space-x-1.5">
+                                <span :class="getLastBroadcastStatusClass(info.status)"
+                                      class="px-1.5 py-0.5 rounded text-[9px] font-extrabold tracking-wider border uppercase"
+                                      x-text="info.status"></span>
+                                <span class="text-[10px] text-slate-400" 
+                                      :title="'Waktu: ' + formatDateTime(info.timestamp)"
+                                      x-text="getBroadcastRecencyLabel(info.timestamp)"></span>
+                              </div>
+                            </div>
+                          </template>
+                          <template x-if="!info">
+                            <span class="text-xs text-slate-400 italic">Belum Pernah</span>
+                          </template>
+                        </div>
                       </td>
                       <td class="px-6 py-4 text-right space-x-2">
                         <button @click="openLeadForm(lead)" class="text-indigo-600 hover:text-indigo-900 font-medium transition">
@@ -757,6 +864,59 @@
           </div>
         </div>
 
+        <!-- Segments Tab -->
+        <div x-show="!loading && activeTab === 'segments'" class="space-y-6">
+          <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <p class="text-sm text-slate-500">Segmentasi dinamis mengelompokkan kontak berdasarkan inklusi dan eksklusi tag secara real-time.</p>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <template x-for="seg in segments" :key="seg.id">
+              <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                <div>
+                  <div class="flex items-start justify-between mb-3">
+                    <h4 class="font-bold text-slate-800 text-base" x-text="seg.name"></h4>
+                    <span class="px-2.5 py-1 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-full" 
+                          x-text="estimateSegmentCount(seg) + ' Kontak Cocok'"></span>
+                  </div>
+
+                  <div class="space-y-2 mb-6">
+                    <div class="text-xs">
+                      <span class="font-bold text-slate-400 uppercase tracking-wider block mb-1">Harus Memiliki Tag (Include):</span>
+                      <div class="flex flex-wrap gap-1">
+                        <template x-for="tag in String(seg.include_tags || '').split(',').map(t => t.trim()).filter(Boolean)" :key="tag">
+                          <span class="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded text-xs font-semibold" x-text="tag"></span>
+                        </template>
+                        <span x-show="!seg.include_tags" class="text-slate-400 italic">Semua Kontak</span>
+                      </div>
+                    </div>
+
+                    <div class="text-xs">
+                      <span class="font-bold text-slate-400 uppercase tracking-wider block mb-1">Tidak Boleh Memiliki Tag (Exclude):</span>
+                      <div class="flex flex-wrap gap-1">
+                        <template x-for="tag in String(seg.exclude_tags || '').split(',').map(t => t.trim()).filter(Boolean)" :key="tag">
+                          <span class="px-2 py-0.5 bg-rose-50 text-rose-700 rounded text-xs font-semibold" x-text="tag"></span>
+                        </template>
+                        <span x-show="!seg.exclude_tags" class="text-slate-400 italic">Tidak ada eksklusi</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="border-t border-slate-100 pt-4 flex justify-end space-x-3 text-sm">
+                  <button @click="openSegmentForm(seg)" class="text-indigo-600 hover:text-indigo-900 font-medium transition">Edit</button>
+                  <button @click="confirmDeleteSegment(seg)" class="text-rose-600 hover:text-rose-900 font-medium transition">Hapus</button>
+                </div>
+              </div>
+            </template>
+            <template x-if="segments.length === 0">
+              <div class="col-span-full bg-white p-12 text-center border border-slate-200 rounded-xl text-slate-400 italic">
+                Belum ada segmentasi yang dibuat.
+              </div>
+            </template>
+          </div>
+        </div>
+
         <!-- Products Tab -->
         <div x-show="!loading && activeTab === 'products'" class="space-y-6">
           <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
@@ -863,10 +1023,10 @@
             <!-- CS Sender -->
             <div>
               <label class="block text-xs font-bold text-indigo-900 uppercase tracking-wider mb-1">Akun / Nomor Pengirim CS</label>
-              <select x-model="broadcastForm.sender_cs" required 
+              <select x-model="broadcastForm.sender_cs" @change="updateAutoCampaignName(false)" required 
                       class="w-full border border-indigo-200 bg-indigo-50/50 rounded-lg px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500">
                 <option value="">-- Pilih Nomor Pengirim --</option>
-                <template x-for="cs in csNumbers" :key="cs.id">
+                <template x-for="cs in getFilteredCSNumbersForForm()" :key="cs.id">
                   <option :value="cs.whatsapp_number" x-text="cs.cs_name + ' (' + displayPhone(cs.whatsapp_number) + ')'"></option>
                 </template>
               </select>
@@ -908,7 +1068,7 @@
             <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4">
               <div class="flex items-center space-x-2">
                 <i data-lucide="shield-check" class="w-4 h-4 text-indigo-600"></i>
-                <span class="text-xs font-bold text-slate-700 uppercase tracking-wider">Anti-Ban & Jeda Pengiriman</span>
+                <span class="text-xs font-bold text-slate-700 uppercase tracking-wider">Parameter Jeda & Anti-Ban</span>
               </div>
 
               <!-- Contact Delay -->
@@ -968,8 +1128,8 @@
                     </button>
                     <div x-show="open" @click.away="open = false" class="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-xl p-2 max-h-36 overflow-y-auto custom-scrollbar space-y-1">
                       <template x-for="tag in getAllUniqueTags()" :key="tag">
-                        <label class="flex items-center space-x-2 text-xs text-slate-700 cursor-pointer p-1 rounded hover:bg-slate-50" @click.prevent="toggleAddTagInBroadcast(tag)">
-                          <input type="checkbox" :checked="broadcastForm.add_tags.indexOf(tag) !== -1" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                        <label class="flex items-center space-x-2 text-xs text-slate-700 cursor-pointer p-1 rounded hover:bg-slate-50">
+                          <input type="checkbox" :value="tag" x-model="broadcastForm.add_tags" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
                           <span x-text="'#' + tag"></span>
                         </label>
                       </template>
@@ -987,8 +1147,8 @@
                     </button>
                     <div x-show="open" @click.away="open = false" class="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-xl p-2 max-h-36 overflow-y-auto custom-scrollbar space-y-1">
                       <template x-for="tag in getAllUniqueTags()" :key="tag">
-                        <label class="flex items-center space-x-2 text-xs text-slate-700 cursor-pointer p-1 rounded hover:bg-slate-50" @click.prevent="toggleRemoveTagInBroadcast(tag)">
-                          <input type="checkbox" :checked="broadcastForm.remove_tags.indexOf(tag) !== -1" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                        <label class="flex items-center space-x-2 text-xs text-slate-700 cursor-pointer p-1 rounded hover:bg-slate-50">
+                          <input type="checkbox" :value="tag" x-model="broadcastForm.remove_tags" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
                           <span x-text="'#' + tag"></span>
                         </label>
                       </template>
@@ -1387,11 +1547,71 @@
               </div>
             </div>
 
-            <div class="pt-4 flex justify-end">
-              <button @click="saveWahaSettingsToServer()" :disabled="submitting" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-semibold transition shadow-sm flex items-center space-x-2">
-                <i data-lucide="save" class="w-4 h-4"></i>
-                <span x-text="submitting ? 'Menyimpan...' : 'Simpan Kredensial WAHA'"></span>
-              </button>
+          <div class="pt-4 flex justify-end">
+            <button @click="saveWahaSettingsToServer()" :disabled="submitting" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-semibold transition shadow-sm flex items-center space-x-2">
+              <i data-lucide="save" class="w-4 h-4"></i>
+              <span x-text="submitting ? 'Menyimpan...' : 'Simpan Kredensial WAHA'"></span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+        <!-- Users Manager Tab (Admin Only) -->
+        <div x-show="!loading && activeTab === 'users_manager'" class="space-y-6 animate-fade-in">
+          <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <h3 class="text-sm font-bold text-slate-800 mb-1">Manajemen Hak Akses Tim</h3>
+            <p class="text-xs text-slate-500">Buat akun login untuk tim CS Anda, lalu kaitkan dengan nomor WhatsApp CS mereka agar data kontak otomatis tersaring aman.</p>
+          </div>
+
+          <!-- Users Table -->
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="overflow-x-auto">
+              <table class="w-full text-left border-collapse">
+                <thead>
+                  <tr class="bg-slate-50 border-b border-slate-200 text-slate-500 text-xs font-bold uppercase tracking-wider">
+                    <th class="px-6 py-4">Username Login</th>
+                    <th class="px-6 py-4">Peran (Role)</th>
+                    <th class="px-6 py-4">Sesi / Nomor CS Terkait</th>
+                    <th class="px-6 py-4">Tanggal Dibuat</th>
+                    <th class="px-6 py-4 text-right">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 text-sm">
+                  <template x-for="usr in users" :key="usr.id">
+                    <tr class="hover:bg-slate-50 transition">
+                      <td class="px-6 py-4">
+                        <div class="font-bold text-slate-900" x-text="usr.username"></div>
+                        <div class="text-[10px] text-slate-400" x-text="'Label Google: ' + (usr.google_contact_label || 'CRM Leads')"></div>
+                      </td>
+                      <td class="px-6 py-4">
+                        <span :class="usr.role === 'Super Admin' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-slate-100 text-slate-700 border-slate-200'"
+                              class="px-2.5 py-1 rounded-full text-xs font-bold border" x-text="usr.role"></span>
+                      </td>
+                      <td class="px-6 py-4 text-slate-600 font-semibold">
+                        <template x-if="usr.linked_cs_number">
+                          <div class="flex flex-wrap gap-1">
+                            <template x-for="num in String(usr.linked_cs_number).split(',').map(n => n.trim()).filter(Boolean)" :key="num">
+                              <span class="px-2 py-0.5 bg-indigo-50 border border-indigo-100 text-indigo-700 text-xs rounded-lg font-medium" x-text="getCSNameByNumber(num)"></span>
+                            </template>
+                          </div>
+                        </template>
+                        <template x-if="!usr.linked_cs_number">
+                          <span class="text-slate-400 italic">Semua Nomor (Akses Penuh)</span>
+                        </template>
+                      </td>
+                      <td class="px-6 py-4 text-slate-500 text-xs" x-text="formatDateTime(usr.created_at)"></td>
+                      <td class="px-6 py-4 text-right space-x-2">
+                        <button @click="openUserForm(usr)" class="text-indigo-600 hover:text-indigo-900 font-semibold text-xs transition">
+                          Edit / Ganti Password
+                        </button>
+                        <button x-show="usr.username !== 'admin'" @click="confirmDeleteUser(usr)" class="text-rose-600 hover:text-rose-900 font-semibold text-xs transition">
+                          Hapus
+                        </button>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
@@ -1399,7 +1619,7 @@
         <!-- Broadcast History & Status View -->
         <div x-show="!loading && activeTab === 'broadcast_history'" class="space-y-6 animate-fade-in">
 
-          <!-- VIEW 1: CAMPAIGN LIST (Shown when details are closed) -->
+          <!-- SUB-VIEW 1: CAMPAIGN LIST -->
           <div x-show="!broadcastDetailModal.open" class="space-y-6">
             <!-- Status Stats Cards -->
             <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -1460,21 +1680,6 @@
                         <td class="px-6 py-4">
                           <div class="font-semibold text-slate-900" x-text="bc.name"></div>
                           <div class="text-[11px] text-slate-400" x-text="bc.id"></div>
-                          <!-- Aksi Tag Pasca Terkirim Info -->
-                          <div class="flex flex-wrap gap-1 mt-1.5">
-                            <template x-if="bc.add_tags">
-                              <span class="px-1.5 py-0.5 bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-bold rounded flex items-center space-x-1">
-                                <span>+ Add:</span>
-                                <span class="font-mono" x-text="bc.add_tags"></span>
-                              </span>
-                            </template>
-                            <template x-if="bc.remove_tags">
-                              <span class="px-1.5 py-0.5 bg-rose-50 border border-rose-200 text-rose-700 text-[10px] font-bold rounded flex items-center space-x-1">
-                                <span>- Remove:</span>
-                                <span class="font-mono" x-text="bc.remove_tags"></span>
-                              </span>
-                            </template>
-                          </div>
                         </td>
                         <td class="px-6 py-4 text-slate-600" x-text="getSegmentName(bc.segment_id)"></td>
                         <td class="px-6 py-4 text-slate-600" x-text="getTemplateName(bc.template_id)"></td>
@@ -1517,95 +1722,83 @@
             </div>
           </div>
 
-          <!-- VIEW 2: INLINE DETAILED CAMPAIGN LOGS (NO POPUP - FULL SCROLLABLE PAGE) -->
-          <div x-show="broadcastDetailModal.open" class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden animate-fade-in">
-            <!-- Header with Back Button -->
-            <div class="px-6 py-5 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div class="flex items-center space-x-3">
-                <button @click="broadcastDetailModal.open = false; setTimeout(() => { lucide.createIcons(); }, 50);" class="p-2 hover:bg-slate-200 rounded-lg text-slate-600 transition" title="Kembali ke Daftar">
+          <!-- SUB-VIEW 2: FULL-PAGE CAMPAIGN DETAIL WORKSPACE -->
+          <div x-show="broadcastDetailModal.open" class="space-y-6 animate-fade-in">
+            <!-- Header Workspace Detail -->
+            <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div class="flex items-center space-x-4">
+                <button @click="broadcastDetailModal.open = false" class="p-2 hover:bg-slate-100 rounded-lg text-slate-600 transition" title="Kembali ke Daftar">
                   <i data-lucide="arrow-left" class="w-5 h-5"></i>
                 </button>
                 <div>
-                  <h3 class="font-bold text-slate-800 text-lg" x-text="broadcastDetailModal.campaign.name"></h3>
-                  <p class="text-xs text-slate-500" x-text="'Segmentasi: ' + getSegmentName(broadcastDetailModal.campaign.segment_id) + ' | Template: ' + getTemplateName(broadcastDetailModal.campaign.template_id)"></p>
+                  <div class="flex items-center space-x-3">
+                    <h3 class="font-bold text-slate-800 text-lg md:text-xl" x-text="broadcastDetailModal.campaign.name"></h3>
+                    <span :class="broadcastDetailModal.campaign.status === 'Completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : (broadcastDetailModal.campaign.status === 'Running' ? 'bg-indigo-50 text-indigo-700 border-indigo-200 animate-pulse' : 'bg-slate-100 text-slate-600 border-slate-200')"
+                          class="px-2.5 py-0.5 rounded-full text-xs font-bold border" x-text="broadcastDetailModal.campaign.status"></span>
+                  </div>
+                  <p class="text-xs text-slate-500 mt-1" x-text="'Segmentasi: ' + getSegmentName(broadcastDetailModal.campaign.segment_id) + ' | Template: ' + getTemplateName(broadcastDetailModal.campaign.template_id)"></p>
                 </div>
               </div>
-              <!-- Action tags display -->
-              <div class="flex flex-wrap gap-1.5">
-                <template x-if="broadcastDetailModal.campaign.add_tags">
-                  <span class="px-2.5 py-1 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold rounded-lg flex items-center space-x-1">
-                    <span>+ Add:</span>
-                    <span class="font-mono" x-text="broadcastDetailModal.campaign.add_tags"></span>
-                  </span>
-                </template>
-                <template x-if="broadcastDetailModal.campaign.remove_tags">
-                  <span class="px-2.5 py-1 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold rounded-lg flex items-center space-x-1">
-                    <span>- Remove:</span>
-                    <span class="font-mono" x-text="broadcastDetailModal.campaign.remove_tags"></span>
-                  </span>
-                </template>
+
+              <!-- Quick Progress & Search Bar -->
+              <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                <div class="relative w-full sm:w-64">
+                  <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-2.5"></i>
+                  <input type="text" x-model="broadcastDetailModal.search" placeholder="Cari penerima..." 
+                         class="pl-9 pr-4 py-1.5 w-full border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <button @click="broadcastDetailModal.open = false" class="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg transition">
+                  Tutup Detail
+                </button>
               </div>
             </div>
 
-            <div class="p-6 space-y-4">
-              <!-- Search and filters in detail -->
-              <div class="flex flex-col sm:flex-row gap-4 items-center justify-between">
-                <div class="relative flex-1 w-full">
-                  <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-2.5"></i>
-                  <input type="text" x-model="broadcastDetailModal.search" placeholder="Cari penerima berdasarkan nama atau nomor..." 
-                         class="pl-9 pr-4 py-2 w-full border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                </div>
-                <div class="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-2 rounded-lg"
-                     x-text="getFilteredDetailTargets().length + ' data log ditemukan'"></div>
-              </div>
-
-              <!-- Full Screen/Page Scrollable Table -->
-              <div class="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-                <div class="overflow-x-auto custom-scrollbar">
-                  <table class="w-full text-left border-collapse text-xs">
-                    <thead class="bg-slate-50 border-b border-slate-200">
-                      <tr>
-                        <th class="px-6 py-4 text-slate-500 font-bold uppercase tracking-wider">Penerima</th>
-                        <th class="px-6 py-4 text-slate-500 font-bold uppercase tracking-wider">WhatsApp</th>
-                        <th class="px-6 py-4 text-slate-500 font-bold uppercase tracking-wider">Waktu Antrean</th>
-                        <th class="px-6 py-4 text-slate-500 font-bold uppercase tracking-wider">Status</th>
-                        <th class="px-6 py-4 text-slate-500 font-bold uppercase tracking-wider">Retry</th>
-                        <th class="px-6 py-4 text-slate-500 font-bold uppercase tracking-wider">Terkirim</th>
-                        <th class="px-6 py-4 text-slate-500 font-bold uppercase tracking-wider">Diterima</th>
-                        <th class="px-6 py-4 text-slate-500 font-bold uppercase tracking-wider">Dibaca</th>
-                        <th class="px-6 py-4 text-slate-500 font-bold uppercase tracking-wider">Proses Pada</th>
-                        <th class="px-6 py-4 text-slate-500 font-bold uppercase tracking-wider">Message ID</th>
+            <!-- Full Width Logs Table -->
+            <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+              <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr class="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
+                      <th class="px-6 py-4">Penerima</th>
+                      <th class="px-6 py-4">WhatsApp</th>
+                      <th class="px-6 py-4">Waktu Antrean</th>
+                      <th class="px-6 py-4">Status</th>
+                      <th class="px-6 py-4">Retry</th>
+                      <th class="px-6 py-4">Terkirim</th>
+                      <th class="px-6 py-4">Diterima</th>
+                      <th class="px-6 py-4">Dibaca</th>
+                      <th class="px-6 py-4">Proses Pada</th>
+                      <th class="px-6 py-4">Message ID</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-100 text-sm">
+                    <template x-for="(target, idx) in getFilteredDetailTargets()" :key="idx">
+                      <tr class="hover:bg-slate-50 transition">
+                        <td class="px-6 py-3 font-semibold text-slate-800" x-text="target.name"></td>
+                        <td class="px-6 py-3 text-slate-600" x-text="displayPhone(target.whatsapp)"></td>
+                        <td class="px-6 py-3 font-mono text-indigo-600 font-semibold text-xs" x-text="target.scheduled_at"></td>
+                        <td class="px-6 py-3">
+                          <span :class="target.status === 'Read' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : (target.status === 'Delivered' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : (target.status === 'Sent' ? 'bg-sky-50 text-sky-700 border-sky-200' : (target.status === 'Processing' ? 'bg-amber-50 text-amber-700 border-amber-200 animate-pulse' : 'bg-slate-100 text-slate-600 border-slate-200')))"
+                                class="px-2.5 py-1 rounded-full text-xs font-bold border" 
+                                x-text="target.status"></span>
+                        </td>
+                        <td class="px-6 py-3 font-mono text-slate-600 text-xs" x-text="target.retry_count + '/' + target.max_retry"></td>
+                        <td class="px-6 py-3 text-slate-500 text-xs" x-text="target.sent_at"></td>
+                        <td class="px-6 py-3 text-slate-500 text-xs" x-text="target.delivered_at"></td>
+                        <td class="px-6 py-3 text-slate-500 text-xs" x-text="target.read_at"></td>
+                        <td class="px-6 py-3 text-slate-500 font-mono text-xs" x-text="target.processing_started_at"></td>
+                        <td class="px-6 py-3 text-slate-400 font-mono text-xs max-w-[150px] truncate" :title="target.message_id" x-text="target.message_id"></td>
                       </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-100 bg-white">
-                      <template x-for="(target, idx) in getFilteredDetailTargets()" :key="idx">
-                        <tr class="hover:bg-slate-50 transition">
-                          <td class="px-6 py-4 font-semibold text-slate-800" x-text="target.name"></td>
-                          <td class="px-6 py-4 text-slate-600" x-text="displayPhone(target.whatsapp)"></td>
-                          <td class="px-6 py-4 font-mono text-indigo-600 font-semibold" x-text="target.scheduled_at"></td>
-                          <td class="px-6 py-4">
-                            <span :class="target.status === 'Read' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : (target.status === 'Delivered' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : (target.status === 'Sent' ? 'bg-sky-50 text-sky-700 border-sky-200' : (target.status === 'Processing' ? 'bg-amber-50 text-amber-700 border-amber-200 animate-pulse' : 'bg-slate-100 text-slate-600 border-slate-200')))"
-                                  class="px-2.5 py-1 rounded-full text-[10px] font-bold border" 
-                                  x-text="target.status"></span>
-                          </td>
-                          <td class="px-6 py-4 font-mono text-slate-600" x-text="target.retry_count + '/' + target.max_retry"></td>
-                          <td class="px-6 py-4 text-slate-500" x-text="target.sent_at"></td>
-                          <td class="px-6 py-4 text-slate-500" x-text="target.delivered_at"></td>
-                          <td class="px-6 py-4 text-slate-500" x-text="target.read_at"></td>
-                          <td class="px-6 py-4 text-slate-500 font-mono text-[10px]" x-text="target.processing_started_at"></td>
-                          <td class="px-6 py-4 text-slate-400 font-mono text-[10px] max-w-[150px] truncate" :title="target.message_id" x-text="target.message_id"></td>
-                        </tr>
-                      </template>
-                      <template x-if="getFilteredDetailTargets().length === 0">
-                        <tr>
-                          <td colspan="10" class="px-6 py-12 text-center text-slate-400 italic">
-                            Tidak ada penerima yang ditemukan.
-                          </td>
-                        </tr>
-                      </template>
-                    </tbody>
-                  </table>
-                </div>
+                    </template>
+                    <template x-if="getFilteredDetailTargets().length === 0">
+                      <tr>
+                        <td colspan="10" class="px-6 py-12 text-center text-slate-400 italic">
+                          Tidak ada penerima yang ditemukan.
+                        </td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
@@ -1688,10 +1881,10 @@
         <!-- CS Owner Selection Dropdown -->
         <div>
           <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">WhatsApp Owner / CS Pengelola</label>
-          <select x-model="leadModal.form.owner_whatsapp" 
+          <select x-model="leadModal.form.owner_whatsapp" required
                   class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
-            <option value="">-- Pilih CS Pengelola (Opsional) --</option>
-            <template x-for="cs in csNumbers" :key="cs.id">
+            <option value="">-- Pilih CS Pengelola --</option>
+            <template x-for="cs in getFilteredCSNumbersForForm()" :key="cs.id">
               <option :value="cs.whatsapp_number" x-text="cs.cs_name + ' (' + displayPhone(cs.whatsapp_number) + ')'"></option>
             </template>
           </select>
@@ -2111,9 +2304,7 @@
     </div>
   </div>
 
-  <!-- Broadcast Campaign Modal Removed (Now full content Workspace) -->
-
-  <!-- Detailed Campaign Logs Modal Removed (Now fully integrated inline in the main layout tab) -->
+  <!-- Detailed Campaign Logs Modal Removed -->
 
   <!-- ========================================== -->
   <!-- MODAL: QUICK BROADCAST FROM CONTACTS -->
@@ -2135,10 +2326,10 @@
         <!-- Pilih CS Pengirim untuk Quick Broadcast -->
         <div>
           <label class="block text-xs font-bold text-indigo-900 uppercase tracking-wider mb-1">Pilih Akun / Nomor Pengirim (CS)</label>
-          <select x-model="quickBroadcastModal.form.sender_cs" required 
+          <select x-model="quickBroadcastModal.form.sender_cs" @change="updateAutoCampaignName(true)" required 
                   class="w-full border border-indigo-200 bg-indigo-50/50 rounded-lg px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500">
             <option value="">-- Pilih Nomor Pengirim WAHA --</option>
-            <template x-for="cs in csNumbers" :key="cs.id">
+            <template x-for="cs in getFilteredCSNumbersForForm()" :key="cs.id">
               <option :value="cs.whatsapp_number" x-text="cs.cs_name + ' (' + displayPhone(cs.whatsapp_number) + ')'"></option>
             </template>
           </select>
@@ -2152,7 +2343,7 @@
 
         <div>
           <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Template Pesan</label>
-          <select x-model="quickBroadcastModal.form.template_id" required 
+          <select x-model="quickBroadcastModal.form.template_id" @change="updateAutoCampaignName(true)" required 
                   class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
             <option value="">-- Pilih Template --</option>
             <template x-for="tmpl in templates" :key="tmpl.id">
@@ -2169,15 +2360,31 @@
 
         <!-- Delays -->
         <div class="bg-slate-50 p-3 rounded-lg border border-slate-100 space-y-3">
+          <span class="block text-xs font-bold text-slate-600 uppercase tracking-wider">Jeda Antar Kontak (Range Detik)</span>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-500 mb-1">Min Kontak (Detik)</label>
+              <input type="number" x-model.number="quickBroadcastModal.form.delay_contact_min" min="1" required
+                     class="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            </div>
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-500 mb-1">Max Kontak (Detik)</label>
+              <input type="number" x-model.number="quickBroadcastModal.form.delay_contact_max" min="1" required
+                     class="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-slate-50 p-3 rounded-lg border border-slate-100 space-y-3">
           <span class="block text-xs font-bold text-slate-600 uppercase tracking-wider">Jeda Antar Bubble Chat (Range Detik)</span>
           <div class="grid grid-cols-2 gap-4">
             <div>
-              <label class="block text-[11px] font-semibold text-slate-500 mb-1">Min (Detik)</label>
+              <label class="block text-[11px] font-semibold text-slate-500 mb-1">Min Bubble (Detik)</label>
               <input type="number" x-model.number="quickBroadcastModal.form.delay_bubble_min" min="1" required
                      class="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500">
             </div>
             <div>
-              <label class="block text-[11px] font-semibold text-slate-500 mb-1">Max (Detik)</label>
+              <label class="block text-[11px] font-semibold text-slate-500 mb-1">Max Bubble (Detik)</label>
               <input type="number" x-model.number="quickBroadcastModal.form.delay_bubble_max" min="1" required
                      class="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500">
             </div>
@@ -2300,6 +2507,95 @@
   </div>
 
   <!-- ========================================== -->
+  <!-- MODAL: USER FORM (ADD/EDIT) -->
+  <!-- ========================================== -->
+  <div x-show="userModal.open" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in" style="display: none;">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden border border-slate-200">
+      <div class="px-6 py-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+        <h3 class="font-bold text-slate-800 text-lg" x-text="userModal.isEdit ? 'Edit Pengguna' : 'Tambah Pengguna Baru'"></h3>
+        <button @click="userModal.open = false" class="text-slate-400 hover:text-slate-600 transition">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <form @submit.prevent="submitUserForm()" class="p-6 space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Username Login</label>
+          <input type="text" x-model="userModal.form.username" required placeholder="Contoh: siska" :disabled="userModal.isEdit && userModal.form.username === 'admin'"
+                 class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Password</label>
+          <input type="password" x-model="userModal.form.password" :required="!userModal.isEdit" placeholder="Isi untuk mengganti password..."
+                 class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+          <template x-if="userModal.isEdit">
+            <span class="text-[10px] text-slate-400 block mt-1">Kosongkan jika tidak ingin mengganti password lama.</span>
+          </template>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Peran (Role)</label>
+          <select x-model="userModal.form.role" required :disabled="userModal.isEdit && userModal.form.username === 'admin'"
+                  class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+            <option value="CS Agent">CS Agent (Saring Data Terbatas)</option>
+            <option value="Super Admin">Super Admin (Akses Semua Data)</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Nama Label Google Contacts</label>
+          <input type="text" x-model="userModal.form.google_contact_label" placeholder="Contoh: CRM Leads Siska"
+                 class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+          <span class="text-[10px] text-slate-400 block mt-1">Sistem akan otomatis mengelompokkan kontak tim ke dalam nama label/group ini di Google Contacts mereka saat disinkronkan.</span>
+        </div>
+
+        <!-- Linked CS (Visible only if Role is CS Agent) -->
+        <div x-show="userModal.form.role === 'CS Agent'">
+          <label class="block text-xs font-bold text-indigo-900 uppercase tracking-wider mb-1">Kaitkan ke Nomor CS Tim (Bisa Pilih Banyak)</label>
+          
+          <!-- Selected Linked CS Numbers Display -->
+          <div class="flex flex-wrap gap-1.5 p-2.5 bg-slate-50 border border-slate-200 rounded-lg min-h-[42px] mb-2">
+            <template x-for="num in getUserFormCSArray()" :key="num">
+              <span class="inline-flex items-center space-x-1 px-2.5 py-1 bg-indigo-100 text-indigo-800 text-xs font-bold rounded-lg shadow-sm">
+                <span x-text="getCSNameByNumber(num)"></span>
+                <button type="button" @click="toggleCSInUserForm(num)" class="text-indigo-500 hover:text-indigo-800 font-bold">&times;</button>
+              </span>
+            </template>
+            <template x-if="getUserFormCSArray().length === 0">
+              <span class="text-xs text-slate-400 italic self-center">Belum ada nomor CS yang dikaitkan. Pilih dari daftar di bawah.</span>
+            </template>
+          </div>
+
+          <!-- Checklist Selection for Multiple CS Numbers -->
+          <div class="space-y-1">
+            <span class="text-[10px] text-slate-400 font-bold block">PILIH NOMOR CS UNTUK DIKAITKAN:</span>
+            <div class="flex flex-col gap-1.5 max-h-36 overflow-y-auto custom-scrollbar p-2 bg-slate-50/50 border border-slate-100 rounded-lg">
+              <template x-for="cs in csNumbers" :key="cs.id">
+                <label class="flex items-center space-x-2 text-xs text-slate-700 cursor-pointer hover:bg-slate-50 p-1 rounded transition">
+                  <input type="checkbox" :checked="getUserFormCSArray().indexOf(cs.whatsapp_number) !== -1" @change="toggleCSInUserForm(cs.whatsapp_number)"
+                         class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                  <span x-text="cs.cs_name + ' (' + displayPhone(cs.whatsapp_number) + ')'"></span>
+                </label>
+              </template>
+              <template x-if="csNumbers.length === 0">
+                <span class="text-xs text-slate-400 italic">Belum ada nomor CS terdaftar.</span>
+              </template>
+            </div>
+          </div>
+          <span class="text-[10px] text-slate-400 block mt-1.5">Sangat Penting: CS Agent ini hanya akan bisa melihat dan mengelola data kontak serta kampanye yang ditugaskan ke nomor-nomor CS terpilih di atas.</span>
+        </div>
+
+        <div class="pt-4 border-t border-slate-100 flex justify-end space-x-3">
+          <button type="button" @click="userModal.open = false" class="px-4 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 transition">
+            Batal
+          </button>
+          <button type="submit" :disabled="submitting" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition">
+            <span x-text="submitting ? 'Menyimpan...' : 'Simpan Pengguna'"></span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
   <!-- MODAL: CS NUMBER FORM (ADD/EDIT) -->
   <!-- ========================================== -->
   <div x-show="csModal.open" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in" style="display: none;">
@@ -2321,6 +2617,22 @@
           <input type="text" x-model="csModal.form.whatsapp_number" required placeholder="Contoh: 628123456789"
                  class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
           <span class="text-[10px] text-slate-400 block mt-1">Gunakan format kode negara tanpa tanda tambah, contoh: 62812...</span>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Nama Sesi WAHA (Session Name)</label>
+          <div class="flex gap-2">
+            <input type="text" x-model="csModal.form.session_name" placeholder="Contoh: session_default"
+                   class="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <!-- Dropdown to select from existing WAHA sessions -->
+            <select @change="csModal.form.session_name = $event.target.value; $event.target.value = '';"
+                    class="border border-slate-200 rounded-lg px-2 py-2 text-xs bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 max-w-[140px]">
+              <option value="">-- Pilih Sesi Aktif --</option>
+              <template x-for="s in wahaSessions" :key="s.name">
+                <option :value="s.name" x-text="s.name"></option>
+              </template>
+            </select>
+          </div>
+          <span class="text-[10px] text-slate-400 block mt-1">Isi jika ingin menghubungkan ke sesi WAHA yang sudah ada di server. Kosongkan jika ingin sistem membuat nama sesi otomatis berdasarkan nama CS.</span>
         </div>
 
         <div class="pt-4 border-t border-slate-100 flex justify-end space-x-3">
@@ -2486,6 +2798,26 @@
     </div>
   </div>
 
+  <!-- ========================================== -->
+  <!-- MODAL: CUSTOM ALERT SYSTEM -->
+  <!-- ========================================== -->
+  <div x-show="alertModal.open" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in" style="display: none;">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden border border-slate-200">
+      <div class="p-6 space-y-3">
+        <div class="flex items-center space-x-3 text-indigo-600">
+          <i data-lucide="info" class="w-6 h-6"></i>
+          <h4 class="font-bold text-slate-800 text-lg" x-text="alertModal.title">Notifikasi</h4>
+        </div>
+        <p class="text-sm text-slate-600" x-text="alertModal.message"></p>
+      </div>
+      <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end text-sm">
+        <button @click="alertModal.open = false" class="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition">
+          Tutup
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Floating Background Tasks Container -->
   <div class="fixed top-4 right-4 z-50 space-y-3 w-80 pointer-events-none">
     <template x-for="task in backgroundTasks" :key="task.id">
@@ -2534,6 +2866,8 @@
       return {
         activeTab: localStorage.getItem('crm_active_tab') || 'dashboard',
         mobileSidebarOpen: false,
+        currentUser: JSON.parse(localStorage.getItem('crm_current_user')) || null,
+        loginForm: { username: '', password: '' },
         leads: [],
         segments: [],
         templates: [],
@@ -2541,6 +2875,7 @@
         broadcastLogs: [],
         tagRules: [],
         csNumbers: [],
+        users: [],
         tags: [],
         loading: true,
         submitting: false,
@@ -2559,6 +2894,7 @@
         // Filters & Selections
         leadSearch: '',
         selectedLeadTagFilter: '',
+        selectedBroadcastStatusFilter: '',
         leadPage: 1,
         leadPerPage: 25,
         selectedLeadIds: [],
@@ -2596,6 +2932,38 @@
               }
             })
             .saveWahaSettings(this.wahaSettings.waha_url, this.wahaSettings.waha_api_key);
+        },
+
+        syncSelectedToGoogleDirect() {
+          if (this.selectedLeadIds.length === 0) {
+            this.showToast('Pilih kontak terlebih dahulu!', 'error');
+            return;
+          }
+
+          var selectedContacts = this.leads.filter(l => this.selectedLeadIds.indexOf(l.id) !== -1);
+          // Gunakan label khusus berdasarkan nama CS yang sedang login saat ini atau role
+          var labelName = this.currentUser && this.currentUser.google_contact_label ? this.currentUser.google_contact_label : 'CRM Leads';
+          
+          this.submitting = true;
+          this.showToast('Sedang menyinkronkan ' + selectedContacts.length + ' kontak langsung ke Google Contacts...', 'success');
+
+          google.script.run
+            .withSuccessHandler((res) => {
+              this.submitting = false;
+              if (res.ok) {
+                this.selectedLeadIds = [];
+                var msg = 'Sukses menyinkronkan ' + res.successCount + ' kontak ke label "' + labelName + '"!';
+                this.showToast(msg, 'success');
+                this.fetchData(true);
+              } else {
+                this.showToast('Sinkronisasi gagal: ' + res.message, 'error');
+              }
+            })
+            .withFailureHandler((err) => {
+              this.submitting = false;
+              this.showToast('Koneksi gagal: ' + err.toString(), 'error');
+            })
+            .bulkSyncContactsToGoogleDirect(selectedContacts, labelName);
         },
 
         handleBubbleImageUpload(event, bIndex) {
@@ -2670,11 +3038,16 @@
           });
           if (!cs) return null;
           
-          // Format nama CS persis sama dengan helper Code.gs
-          var expectedSessionName = cs.cs_name.toString().trim()
-            .replace(/[^a-zA-Z0-9]/g, '_')
-            .replace(/_+/g, '_')
-            .toLowerCase();
+          var expectedSessionName = '';
+          if (cs.session_name) {
+            expectedSessionName = cs.session_name.toString().trim().toLowerCase();
+          } else {
+            // Format nama CS persis sama dengan helper Code.gs
+            expectedSessionName = cs.cs_name.toString().trim()
+              .replace(/[^a-zA-Z0-9]/g, '_')
+              .replace(/_+/g, '_')
+              .toLowerCase();
+          }
 
           // Cocokkan secara case-insensitive dengan daftar sesi dari WAHA
           return this.wahaSessions.find((s) => {
@@ -2817,6 +3190,8 @@
         },
 
         // Modals
+        syncingGoogle: false,
+        alertModal: { open: false, title: '', message: '' },
         leadModal: { open: false, isEdit: false, form: { id: '', name: '', whatsapp: '', tags: '', owner_whatsapp: '' } },
         segmentModal: { open: false, isEdit: false, form: { id: '', name: '', include_tags: '', exclude_tags: '' } },
         templateModal: { open: false, isEdit: false, bubbles: [], form: { id: '', name: '', content: '', product_id: '', image_url: '' } },
@@ -2826,8 +3201,9 @@
         importModal: { open: false, fileName: '', headers: [], rawRows: [], parsed: [], mapping: { name: '', whatsapp: '', tags: '', owner_whatsapp: '' } },
         broadcastDetailModal: { open: false, campaign: {}, search: '', targets: [] },
         tagRuleModal: { open: false, isEdit: false, form: { id: '', trigger_tag: '', tags_to_add: '', tags_to_remove: '', assign_cs: '' } },
-        csModal: { open: false, isEdit: false, form: { id: '', cs_name: '', whatsapp_number: '' } },
+        csModal: { open: false, isEdit: false, form: { id: '', cs_name: '', whatsapp_number: '', session_name: '' } },
         tagModal: { open: false, isEdit: false, form: { id: '', tag_name: '' } },
+        userModal: { open: false, isEdit: false, form: { id: '', username: '', password: '', role: 'CS Agent', linked_cs_number: '', google_contact_label: 'CRM Leads' } },
 
         // Toast Notifications
         toasts: [],
@@ -2843,6 +3219,7 @@
           // Reset halaman ke 1 setiap kali filter pencarian atau segmentasi berubah
           this.$watch('leadSearch', () => this.leadPage = 1);
           this.$watch('selectedLeadTagFilter', () => this.leadPage = 1);
+          this.$watch('selectedBroadcastStatusFilter', () => this.leadPage = 1);
           this.$watch('selectedSegmentId', () => this.leadPage = 1);
           this.$watch('leadPerPage', () => this.leadPage = 1);
 
@@ -2859,6 +3236,11 @@
             } else {
               this.stopWahaPolling();
             }
+            setTimeout(function() {
+              if (window.lucide) {
+                window.lucide.createIcons();
+              }
+            }, 50);
           });
         },
 
@@ -2893,34 +3275,6 @@
             this.broadcastForm.excluded_ids.push(leadId);
           } else {
             this.broadcastForm.excluded_ids.splice(index, 1);
-          }
-        },
-
-        toggleAddTagInBroadcast(tag) {
-          var index = this.broadcastForm.add_tags.indexOf(tag);
-          if (index === -1) {
-            this.broadcastForm.add_tags.push(tag);
-            // Hapus dari list remove jika ada agar tidak bentrok
-            var removeIdx = this.broadcastForm.remove_tags.indexOf(tag);
-            if (removeIdx !== -1) {
-              this.broadcastForm.remove_tags.splice(removeIdx, 1);
-            }
-          } else {
-            this.broadcastForm.add_tags.splice(index, 1);
-          }
-        },
-
-        toggleRemoveTagInBroadcast(tag) {
-          var index = this.broadcastForm.remove_tags.indexOf(tag);
-          if (index === -1) {
-            this.broadcastForm.remove_tags.push(tag);
-            // Hapus dari list add jika ada agar tidak bentrok
-            var addIdx = this.broadcastForm.add_tags.indexOf(tag);
-            if (addIdx !== -1) {
-              this.broadcastForm.add_tags.splice(addIdx, 1);
-            }
-          } else {
-            this.broadcastForm.remove_tags.splice(index, 1);
           }
         },
 
@@ -2981,9 +3335,72 @@
           }
         },
 
+        getLastBroadcastInfo(leadId) {
+          if (!leadId) return null;
+          // Filter seluruh log pengiriman untuk kontak ini
+          var logs = this.broadcastLogs.filter(function(l) {
+            return l.lead_id === leadId;
+          });
+          if (logs.length === 0) return null;
+          
+          // Urutkan log dari yang terbaru berdasarkan waktu update/jadwal
+          logs.sort(function(a, b) {
+            var dateA = new Date(a.updated_at || a.scheduled_at || 0);
+            var dateB = new Date(b.updated_at || b.scheduled_at || 0);
+            return dateB - dateA;
+          });
+          
+          var latestLog = logs[0];
+          var campaign = this.broadcasts.find(function(b) {
+            return b.id === latestLog.broadcast_id;
+          });
+          
+          return {
+            campaignName: campaign ? campaign.name : 'Unknown Campaign',
+            status: latestLog.status,
+            timestamp: latestLog.sent_at || latestLog.updated_at || latestLog.scheduled_at
+          };
+        },
+
+        getLastBroadcastStatusClass(status) {
+          if (!status) return 'bg-slate-100 border-slate-200 text-slate-600';
+          var s = status.toUpperCase();
+          if (s === 'READ') return 'bg-emerald-50 border-emerald-200 text-emerald-700';
+          if (s === 'DELIVERED') return 'bg-teal-50 border-teal-200 text-teal-700';
+          if (s === 'SENT' || s === 'SUCCESS') return 'bg-sky-50 border-sky-200 text-sky-700';
+          if (s === 'PROCESSING') return 'bg-amber-50 border-amber-200 text-amber-700 animate-pulse';
+          if (s === 'FAILED' || s === 'INVALID NUMBER') return 'bg-rose-50 border-rose-200 text-rose-700';
+          return 'bg-slate-100 border-slate-200 text-slate-600';
+        },
+
+        getContactStatus(lead) {
+          var info = this.getLastBroadcastInfo(lead.id);
+          if (info) {
+            return info.status; // Mengembalikan 'Sent', 'Delivered', 'Read', 'Failed', 'Invalid Number', atau 'Processing'
+          }
+          // Fallback ke kolom status bawaan sheet jika log belum dibuat
+          if (lead.number_status === 'Inactive') return 'Invalid Number';
+          return lead.number_status || 'Unchecked';
+        },
+
         onTemplateChange() {
           var tmpl = this.templates.find((t) => t.id === this.broadcastForm.template_id);
           this.broadcastForm.temp_content = tmpl ? tmpl.content : '';
+          this.updateAutoCampaignName(false);
+        },
+
+        updateAutoCampaignName(isQuick) {
+          var form = isQuick ? this.quickBroadcastModal.form : this.broadcastForm;
+          var tmpl = this.templates.find((t) => t.id === form.template_id);
+          var prodName = 'Tanpa Produk';
+          if (tmpl && tmpl.product_id) {
+            var prod = this.products.find((p) => p.id === tmpl.product_id);
+            if (prod) prodName = prod.product_name;
+          }
+          var dateStr = new Date().toLocaleDateString('id-ID').replace(/\//g, '-');
+          var sender = form.sender_cs ? this.displayPhone(form.sender_cs) : 'Tanpa Pengirim';
+          
+          form.name = prodName + ' - ' + dateStr + ' - ' + sender;
         },
 
         spinTextClient(text) {
@@ -3076,6 +3493,36 @@
           }, 4000);
         },
 
+        showCustomAlert(title, message) {
+          this.alertModal.title = title;
+          this.alertModal.message = message;
+          this.alertModal.open = true;
+          setTimeout(() => {
+            if (window.lucide) window.lucide.createIcons();
+          }, 50);
+        },
+
+        syncGoogleContacts() {
+          this.syncingGoogle = true;
+          this.showToast('Menghubungkan ke Google Contacts...', 'info');
+          
+          google.script.run
+            .withSuccessHandler((res) => {
+              this.syncingGoogle = false;
+              if (res.ok) {
+                this.showCustomAlert('Sinkronisasi Berhasil', 'Berhasil mengimpor ' + res.importedCount + ' kontak baru dari Google Contacts Anda tanpa duplikasi.');
+                this.fetchData(true); // refresh data secara senyap
+              } else {
+                this.showCustomAlert('Sinkronisasi Gagal', 'Gagal menyinkronkan kontak: ' + res.message);
+              }
+            })
+            .withFailureHandler((err) => {
+              this.syncingGoogle = false;
+              this.showCustomAlert('Error Koneksi', 'Terjadi kesalahan sistem: ' + err.toString());
+            })
+            .importGoogleContacts();
+        },
+
         toggleAutoSync() {
           if (this.autoSyncEnabled) {
             this.autoSyncTimer = setInterval(() => {
@@ -3091,10 +3538,72 @@
           }
         },
 
+        submitLogin() {
+          if (!this.loginForm.username || !this.loginForm.password) {
+            this.showToast('Harap isi username dan password!', 'error');
+            return;
+          }
+          this.submitting = true;
+          google.script.run
+            .withSuccessHandler((res) => {
+              this.submitting = false;
+              if (res.ok) {
+                this.currentUser = res.user;
+                localStorage.setItem('crm_current_user', JSON.stringify(res.user));
+                this.loginForm = { username: '', password: '' };
+                this.showToast('Selamat datang kembali, ' + res.user.username + '!', 'success');
+                this.fetchData();
+              } else {
+                this.showToast(res.message, 'error');
+              }
+            })
+            .withFailureHandler((err) => {
+              this.submitting = false;
+              this.showToast('Gagal terhubung ke server login: ' + err.toString(), 'error');
+            })
+            .loginUser(this.loginForm.username, this.loginForm.password);
+        },
+
+        logoutUser() {
+          this.currentUser = null;
+          this.googleAccessToken = '';
+          localStorage.removeItem('crm_current_user');
+          localStorage.removeItem('crm_google_access_token');
+          this.activeTab = 'dashboard';
+          this.showToast('Anda berhasil keluar akun.', 'success');
+        },
+
+        // GIS Google Login Handler
+        signInWithGoogle() {
+          if (!this.googleClientId) {
+            this.showToast('Google Client ID belum diisi di Pengaturan!', 'error');
+            return;
+          }
+          
+          var self = this;
+          try {
+            var client = google.accounts.oauth2.initTokenClient({
+              client_id: self.googleClientId,
+              scope: 'https://www.googleapis.com/auth/contacts https://www.googleapis.com/auth/userinfo.email',
+              callback: (tokenResponse) => {
+                if (tokenResponse && tokenResponse.access_token) {
+                  self.googleAccessToken = tokenResponse.access_token;
+                  localStorage.setItem('crm_google_access_token', tokenResponse.access_token);
+                  self.verifyGoogleLogin(tokenResponse.access_token);
+                }
+              }
+            });
+            client.requestAccessToken();
+          } catch (e) {
+            this.showToast('Error Google Sign-In: ' + e.toString(), 'error');
+          }
+        },
+
         getTabTitle() {
           if (this.activeTab === 'dashboard') return 'Dashboard Ringkasan';
           if (this.activeTab === 'leads') return 'Kelola Semua Kontak';
           if (this.activeTab === 'tags_manager') return 'Kelola Master Tags';
+          if (this.activeTab === 'segments') return 'Aturan Segmentasi Tag';
           if (this.activeTab === 'templates') return 'Template Pesan';
           if (this.activeTab === 'broadcasts') return 'Kirim Broadcast';
           if (this.activeTab === 'broadcast_history') return 'Riwayat & Status Broadcast';
@@ -3123,6 +3632,7 @@
                 this.csNumbers = response.data.cs_numbers || [];
                 this.products = response.data.products || [];
                 this.tags = response.data.tags || [];
+                this.users = response.data.users || [];
                 if (response.data.waha_settings) {
                   this.wahaSettings = response.data.waha_settings;
                 }
@@ -3140,7 +3650,7 @@
               this.isSyncing = false;
               this.showToast('Koneksi server gagal: ' + err.toString(), 'error');
             })
-            .getDashboardData();
+            .getDashboardData(this.currentUser);
         },
 
         // Unique Tags Finder (pulls from master tag list)
@@ -3152,14 +3662,21 @@
         getFilteredLeads() {
           var search = this.leadSearch.trim().toLowerCase();
           var filterTag = this.selectedLeadTagFilter.trim().toLowerCase();
+          var filterBcStatus = this.selectedBroadcastStatusFilter;
           var activeSegment = this.segments.find(s => s.id === this.selectedSegmentId);
 
           return this.leads.filter((lead) => {
-            // Text search filter
+            // Konversi aman ke string untuk mencegah crash jika ada data kosong/angka
+            var leadName = lead.name ? String(lead.name).toLowerCase() : '';
+            var leadWhatsapp = lead.whatsapp ? String(lead.whatsapp) : '';
+            var leadTags = lead.tags ? String(lead.tags).toLowerCase() : '';
+            
+            // Pencarian cerdas (mendukung nama, nomor internasional, nomor lokal 08..., dan label/tags)
             var matchSearch = !search || 
-              lead.name.toLowerCase().indexOf(search) !== -1 ||
-              lead.whatsapp.indexOf(search) !== -1 ||
-              (lead.tags && lead.tags.toLowerCase().indexOf(search) !== -1);
+              leadName.indexOf(search) !== -1 ||
+              leadWhatsapp.indexOf(search) !== -1 ||
+              this.displayPhone(leadWhatsapp).indexOf(search) !== -1 ||
+              leadTags.indexOf(search) !== -1;
 
             // Quick horizontal tag filter
             var matchTag = !filterTag || 
@@ -3184,7 +3701,22 @@
               }
             }
 
-            return matchSearch && matchTag && matchSegment;
+            // Broadcast Status filter
+            var matchBroadcast = true;
+            if (filterBcStatus) {
+              var info = this.getLastBroadcastInfo(lead.id);
+              var currentStatus = this.getContactStatus(lead);
+              
+              if (filterBcStatus === 'never') {
+                matchBroadcast = !info; // Belum pernah ada riwayat log broadcast sama sekali
+              } else if (filterBcStatus === 'sent_any') {
+                matchBroadcast = !!info; // Sudah pernah dikirimi broadcast minimal sekali
+              } else {
+                matchBroadcast = (currentStatus === filterBcStatus); // Memiliki status spesifik
+              }
+            }
+
+            return matchSearch && matchTag && matchSegment && matchBroadcast;
           });
         },
 
@@ -3232,9 +3764,6 @@
           var exc = segment.exclude_tags ? segment.exclude_tags.split(',').map(function(t) { return t.trim().toLowerCase(); }).filter(Boolean) : [];
 
           return this.leads.filter(function(lead) {
-            // Proteksi: Lewati otomatis jika nomor berstatus Inactive (Mati)
-            if (lead.number_status === 'Inactive') return false;
-
             var leadTags = lead.tags ? lead.tags.split(',').map(function(t) { return t.trim().toLowerCase(); }).filter(Boolean) : [];
             var hasExclude = leadTags.some(function(t) { return exc.indexOf(t) !== -1; });
             if (hasExclude) return false;
@@ -3324,19 +3853,21 @@
 
         // Lead Checkbox Helpers
         isAllLeadsSelected() {
-          var filtered = this.getFilteredLeads();
-          if (filtered.length === 0) return false;
-          return filtered.every((lead) => this.selectedLeadIds.indexOf(lead.id) !== -1);
+          var paginated = this.getPaginatedLeads();
+          if (paginated.length === 0) return false;
+          return paginated.every((lead) => this.selectedLeadIds.indexOf(lead.id) !== -1);
         },
 
         toggleSelectAllLeads() {
-          var filtered = this.getFilteredLeads();
+          var paginated = this.getPaginatedLeads();
           if (this.isAllLeadsSelected()) {
+            // Hapus pilihan hanya untuk kontak yang tampil di halaman aktif saat ini
             this.selectedLeadIds = this.selectedLeadIds.filter((id) => {
-              return !filtered.some((lead) => lead.id === id);
+              return !paginated.some((lead) => lead.id === id);
             });
           } else {
-            filtered.forEach((lead) => {
+            // Pilih hanya kontak yang tampil di halaman aktif saat ini
+            paginated.forEach((lead) => {
               if (this.selectedLeadIds.indexOf(lead.id) === -1) {
                 this.selectedLeadIds.push(lead.id);
               }
@@ -3349,20 +3880,108 @@
             this.showToast('Pilih minimal satu tag dari checklist!', 'error');
             return;
           }
-          this.loading = true;
+
+          var leadIdsToUpdate = [].concat(this.selectedLeadIds);
+          var tagsToApply = [].concat(this.selectedBulkTags);
+          var totalContacts = leadIdsToUpdate.length;
+
+          // --- OPTIMISTIC UI UPDATE (INSTAN AKTIF DI LAYAR) ---
+          this.leads.forEach((lead) => {
+            if (leadIdsToUpdate.indexOf(lead.id) !== -1) {
+              var currentTags = String(lead.tags || '').split(',').map(function(t) { return t.trim(); }).filter(Boolean);
+              
+              if (actionType === 'ADD') {
+                tagsToApply.forEach((t) => {
+                  if (currentTags.map(function(ct) { return ct.toLowerCase(); }).indexOf(t.toLowerCase()) === -1) {
+                    currentTags.push(t);
+                  }
+                });
+              } else if (actionType === 'REMOVE') {
+                var toRemoveLower = tagsToApply.map(function(t) { return t.toLowerCase(); });
+                currentTags = currentTags.filter(function(t) {
+                  return toRemoveLower.indexOf(t.toLowerCase()) === -1;
+                });
+              }
+              
+              // Terapkan kaskade aturan otomatis (Tag Rules) secara lokal agar CS & Tag tambahan ikut berubah instan
+              this.tagRules.forEach((rule) => {
+                var trigger = rule.trigger_tag.trim().toLowerCase();
+                var lowerTags = currentTags.map(function(t) { return t.toLowerCase(); });
+                if (lowerTags.indexOf(trigger) !== -1) {
+                  if (rule.tags_to_add) {
+                    rule.tags_to_add.split(',').map(function(t) { return t.trim(); }).forEach(function(addTag) {
+                      if (lowerTags.indexOf(addTag.toLowerCase()) === -1) {
+                        currentTags.push(addTag);
+                        lowerTags.push(addTag.toLowerCase());
+                      }
+                    });
+                  }
+                  if (rule.tags_to_remove) {
+                    var rems = rule.tags_to_remove.split(',').map(function(t) { return t.trim().toLowerCase(); });
+                    currentTags = currentTags.filter(function(t) {
+                      return rems.indexOf(t.toLowerCase()) === -1;
+                    });
+                  }
+                  if (rule.assign_cs) {
+                    lead.owner_whatsapp = rule.assign_cs;
+                  }
+                }
+              });
+              
+              lead.tags = currentTags.join(', ');
+            }
+          });
+
+          // Bersihkan pilihan checkbox & tag terpilih seketika agar user bisa langsung lanjut bekerja
+          this.selectedLeadIds = [];
+          this.selectedBulkTags = [];
+
+          // Munculkan floating task di pojok kanan atas sebagai info proses latar belakang
+          var taskId = Date.now();
+          this.backgroundTasks.push({
+            id: taskId,
+            name: 'Update Tag ' + totalContacts + ' Kontak',
+            status: 'processing',
+            progressText: 'Menyimpan perubahan tag ke Google Sheets...'
+          });
+          setTimeout(() => { lucide.createIcons(); }, 50);
+
+          // Kirim ke database Google Sheets secara senyap (biarkan database memproses di belakang)
           google.script.run
             .withSuccessHandler((res) => {
-              this.loading = false;
+              var task = this.backgroundTasks.find(function(t) { return t.id === taskId; });
               if (res.ok) {
-                this.showToast('Tag massal berhasil diperbarui!', 'success');
-                this.selectedLeadIds = [];
-                this.selectedBulkTags = [];
-                this.fetchData();
+                if (task) {
+                  task.status = 'success';
+                  task.progressText = 'Sukses memperbarui tag ' + totalContacts + ' kontak!';
+                }
+                this.showToast('Perubahan tag berhasil disimpan ke database!', 'success');
+                this.fetchData(true); // Sinkronisasi senyap untuk memastikan keselarasan data
               } else {
-                this.showToast('Gagal perbarui tag: ' + res.message, 'error');
+                if (task) {
+                  task.status = 'error';
+                  task.progressText = 'Gagal: ' + res.message;
+                }
+                this.showToast('Gagal menyimpan ke database: ' + res.message, 'error');
               }
+              setTimeout(() => {
+                this.backgroundTasks = this.backgroundTasks.filter(function(t) { return t.id !== taskId; });
+              }, 4000);
+              setTimeout(() => { lucide.createIcons(); }, 50);
             })
-            .bulkUpdateLeadTags(this.selectedLeadIds, actionType, this.selectedBulkTags.join(', '));
+            .withFailureHandler((err) => {
+              var task = this.backgroundTasks.find(function(t) { return t.id === taskId; });
+              if (task) {
+                task.status = 'error';
+                task.progressText = 'Error: ' + err.toString();
+              }
+              this.showToast('Koneksi terputus saat menyimpan tag!', 'error');
+              setTimeout(() => {
+                this.backgroundTasks = this.backgroundTasks.filter(function(t) { return t.id !== taskId; });
+              }, 4000);
+              setTimeout(() => { lucide.createIcons(); }, 50);
+            })
+            .bulkUpdateLeadTags(leadIdsToUpdate, actionType, tagsToApply.join(', '));
         },
 
         runBulkDeleteAction() {
@@ -3425,6 +4044,19 @@
           this.leadModal.form.tags = current.join(', ');
         },
 
+        // Filter CS numbers available for the current user
+        getFilteredCSNumbersForForm() {
+          if (!this.currentUser) return [];
+          if (this.currentUser.role === 'Super Admin') {
+            return this.csNumbers;
+          }
+          var linkedStr = String(this.currentUser.linked_cs_number || '');
+          var linkedArr = linkedStr.split(',').map(function(n) { return n.trim(); }).filter(Boolean);
+          return this.csNumbers.filter((cs) => {
+            return linkedArr.indexOf(cs.whatsapp_number.toString()) !== -1;
+          });
+        },
+
         // Lead Modal Actions
         openLeadForm(lead) {
           this.newTagInput = '';
@@ -3433,12 +4065,26 @@
             this.leadModal.form = { id: lead.id, name: lead.name, whatsapp: this.displayPhone(lead.whatsapp), tags: lead.tags, owner_whatsapp: lead.owner_whatsapp };
           } else {
             this.leadModal.isEdit = false;
-            this.leadModal.form = { id: '', name: '', whatsapp: '', tags: '', owner_whatsapp: '' };
+            // Jika CS Agent, isi otomatis owner_whatsapp dengan nomor CS pertama mereka agar tidak kosong
+            var defaultOwner = '';
+            var myCS = this.getFilteredCSNumbersForForm();
+            if (myCS.length > 0) {
+              defaultOwner = myCS[0].whatsapp_number;
+            }
+            this.leadModal.form = { id: '', name: '', whatsapp: '', tags: '', owner_whatsapp: defaultOwner };
           }
           this.leadModal.open = true;
         },
 
         submitLeadForm() {
+          // Validasi & Proteksi: Jika CS Agent mengosongkan CS pengelola, isi otomatis dengan nomor CS mereka
+          if (this.currentUser && this.currentUser.role === 'CS Agent' && !this.leadModal.form.owner_whatsapp) {
+            var myCS = this.getFilteredCSNumbersForForm();
+            if (myCS.length > 0) {
+              this.leadModal.form.owner_whatsapp = myCS[0].whatsapp_number;
+            }
+          }
+          
           this.submitting = true;
           google.script.run
             .withSuccessHandler((res) => {
@@ -3574,77 +4220,28 @@
         },
 
         submitImport() {
-          var allLeads = this.importModal.parsed;
-          var totalRows = allLeads.length;
-          this.importModal.open = false; // Tutup modal instan agar user bisa langsung bekerja
+          var totalRows = this.importModal.parsed.length;
+          this.importModal.open = false; // Close modal immediately so user can keep working
           
           var taskId = Date.now();
-          var task = {
+          this.backgroundTasks.push({
             id: taskId,
             name: 'Import ' + totalRows + ' Kontak',
             status: 'processing',
-            progressText: 'Mempersiapkan pembagian data...'
-          };
-          this.backgroundTasks.push(task);
+            progressText: 'Sedang menulis data ke Google Sheets...'
+          });
           
-          setTimeout(function() { lucide.createIcons(); }, 50);
+          setTimeout(() => { lucide.createIcons(); }, 50);
 
-          // Pecah data menjadi ukuran maksimal 500 kontak per batch
-          var chunkSize = 500;
-          var chunks = [];
-          for (var i = 0; i < allLeads.length; i += chunkSize) {
-            chunks.push(allLeads.slice(i, i + chunkSize));
-          }
-
-          var currentChunkIndex = 0;
-          var self = this;
-
-          // Fungsi rekursif untuk mengirim batch demi batch di latar belakang
-          function sendNextChunk() {
-            if (currentChunkIndex >= chunks.length) {
-              // Semua batch selesai terkirim
-              task.status = 'success';
-              task.progressText = 'Sukses memproses ' + totalRows + ' kontak!';
-              self.showToast('Seluruh data kontak berhasil diimpor!', 'success');
-              self.fetchData(true); // Refresh data senyap tanpa mengganggu user
-              
-              setTimeout(function() {
-                self.backgroundTasks = self.backgroundTasks.filter(function(t) { return t.id !== taskId; });
-              }, 7000);
-              setTimeout(function() { lucide.createIcons(); }, 50);
-              return;
-            }
-
-            var chunk = chunks[currentChunkIndex];
-            var startNum = (currentChunkIndex * chunkSize) + 1;
-            var endNum = Math.min((currentChunkIndex + 1) * chunkSize, totalRows);
-            
-            task.progressText = 'Menulis kontak ' + startNum + ' - ' + endNum + ' dari ' + totalRows + '...';
-
-            google.script.run
-              .withSuccessHandler(function(res) {
-                if (res.ok) {
-                  currentChunkIndex++;
-                  sendNextChunk(); // Lanjutkan ke batch berikutnya
-                } else {
-                  task.status = 'error';
-                  task.progressText = 'Gagal pada baris ' + startNum + ': ' + res.message;
-                  self.showToast('Proses import terhenti karena kesalahan.', 'error');
+          google.script.run
+            .withSuccessHandler((res) => {
+              var task = this.backgroundTasks.find(t => t.id === taskId);
+              if (res.ok) {
+                if (task) {
+                  task.status = 'success';
+                  task.progressText = 'Sukses mengimpor ' + totalRows + ' kontak!';
                 }
-              })
-              .withFailureHandler(function(err) {
-                task.status = 'error';
-                task.progressText = 'Koneksi terputus: ' + err.toString();
-                self.showToast('Gagal terhubung ke Google Sheets!', 'error');
-              })
-              .importLeads(chunk);
-          }
-
-          // Mulai jalankan antrean batch pertama
-          sendNextChunk();
-        },
-
-        downloadExcelTemplate() {
+        handleBubbleImageUpload(event, bIndex) {
           // Buat data dummy
           var data = [
             ["Nama Lengkap", "Nomor WhatsApp", "Label Tags", "Owner WhatsApp (CS)"],
@@ -3721,13 +4318,71 @@
               this.submitting = false;
               if (res.ok) {
                 this.segmentModal.open = false;
-                this.showToast('Aturan Segmentasi berhasil disimpan!', 'success');
+                this.showToast('Segmentasi berhasil disimpan!', 'success');
                 this.fetchData();
               } else {
                 this.showToast('Gagal menyimpan segmentasi: ' + res.message, 'error');
               }
             })
+            .withFailureHandler((err) => {
+              this.submitting = false;
+              this.showToast('Gagal: ' + err.toString(), 'error');
+            })
             .saveSegment(this.segmentModal.form);
+        },
+
+        submitImport() {
+          var totalRows = this.importModal.parsed.length;
+          this.importModal.open = false; // Close modal instantly
+          
+          var taskId = Date.now();
+          this.backgroundTasks.push({
+            id: taskId,
+            name: 'Import ' + totalRows + ' Kontak',
+            status: 'processing',
+            progressText: 'Sedang menulis data ke Google Sheets...'
+          });
+          
+          setTimeout(() => { lucide.createIcons(); }, 50);
+
+          google.script.run
+            .withSuccessHandler((res) => {
+              var task = this.backgroundTasks.find(t => t.id === taskId);
+              if (res.ok) {
+                if (task) {
+                  task.status = 'success';
+                  task.progressText = 'Sukses mengimpor ' + totalRows + ' kontak!';
+                }
+                this.showToast('Import latar belakang selesai!', 'success');
+                this.fetchData(true); // Silent refresh
+              } else {
+                if (task) {
+                  task.status = 'error';
+                  task.progressText = 'Gagal: ' + res.message;
+                }
+                this.showToast('Gagal mengimpor kontak!', 'error');
+              }
+              
+              // Auto remove task card after 5 seconds
+              setTimeout(() => {
+                this.backgroundTasks = this.backgroundTasks.filter(t => t.id !== taskId);
+              }, 5000);
+              setTimeout(() => { lucide.createIcons(); }, 50);
+            })
+            .withFailureHandler((err) => {
+              var task = this.backgroundTasks.find(t => t.id === taskId);
+              if (task) {
+                task.status = 'error';
+                task.progressText = 'Error: ' + err.toString();
+              }
+              this.showToast('Koneksi terputus saat import!', 'error');
+              
+              setTimeout(() => {
+                this.backgroundTasks = this.backgroundTasks.filter(t => t.id !== taskId);
+              }, 5000);
+              setTimeout(() => { lucide.createIcons(); }, 50);
+            })
+            .importLeads(this.importModal.parsed);
         },
 
         openQuickBroadcastModal() {
@@ -3735,8 +4390,8 @@
             name: 'Broadcast ' + new Date().toLocaleDateString('id-ID'),
             template_id: '',
             scheduled_at: '',
-            delay_contact_min: 2,
-            delay_contact_max: 5,
+            delay_contact_min: this.settings.delay_contact_min || 15,
+            delay_contact_max: this.settings.delay_contact_max || 30,
             delay_bubble_min: this.settings.delay_bubble_min || 5,
             delay_bubble_max: this.settings.delay_bubble_max || 10,
             throttle_count: this.settings.throttle_count || 20,
@@ -3756,9 +4411,9 @@
             this.showToast('Pilih minimal satu kontak untuk mengirim broadcast!', 'error');
             return;
           }
-          this.submitting = true;
           
           var targetLeadIds = this.selectedLeadIds.join(', ');
+          var totalCount = this.selectedLeadIds.length;
 
           var payload = {
             name: this.quickBroadcastModal.form.name,
@@ -3774,26 +4429,76 @@
             add_tags: this.quickBroadcastModal.form.add_tags.join(', '),
             remove_tags: this.quickBroadcastModal.form.remove_tags.join(', '),
             sender_cs: this.quickBroadcastModal.form.sender_cs,
-            total_count: this.selectedLeadIds.length,
+            total_count: totalCount,
             target_lead_ids: targetLeadIds
           };
 
+          // --- OPTIMISTIC UI FOR QUICK BROADCAST ---
+          var tempId = 'TEMP-' + Date.now();
+          var tempBc = {
+            id: tempId,
+            name: payload.name,
+            segment_id: payload.segment_id,
+            template_id: payload.template_id,
+            status: 'Pending',
+            sent_count: 0,
+            total_count: payload.total_count,
+            created_at: new Date().toISOString()
+          };
+
+          // Masukkan data virtual secara instan
+          this.broadcasts.unshift(tempBc);
+          
+          // Tutup modal, bersihkan checklist, dan alihkan tab instan
+          this.quickBroadcastModal.open = false;
+          this.showToast('Broadcast instan berhasil diantrikan!', 'success');
+          this.activeTab = 'broadcast_history';
+          this.selectedLeadIds = [];
+
+          // Buat background task
+          var taskId = Date.now();
+          this.backgroundTasks.push({
+            id: taskId,
+            name: 'Kirim Broadcast Instan: ' + payload.name,
+            status: 'processing',
+            progressText: 'Membuat log antrean di Google Sheets...'
+          });
+          setTimeout(() => { lucide.createIcons(); }, 50);
+
           google.script.run
             .withSuccessHandler((res) => {
-              this.submitting = false;
+              var task = this.backgroundTasks.find(t => t.id === taskId);
               if (res.ok) {
-                this.quickBroadcastModal.open = false;
-                this.showToast('Broadcast Campaign berhasil ditambahkan ke antrian!', 'success');
-                this.selectedLeadIds = [];
-                this.fetchData();
-                this.activeTab = 'broadcast_history';
+                if (task) {
+                  task.status = 'success';
+                  task.progressText = 'Sukses mengantrikan broadcast instan!';
+                }
+                this.fetchData(true); // Refresh senyap
               } else {
-                this.showToast('Gagal membuat campaign: ' + res.message, 'error');
+                if (task) {
+                  task.status = 'error';
+                  task.progressText = 'Gagal: ' + res.message;
+                }
+                this.broadcasts = this.broadcasts.filter(b => b.id !== tempId);
+                this.showToast('Gagal membuat broadcast instan: ' + res.message, 'error');
               }
+              setTimeout(() => {
+                this.backgroundTasks = this.backgroundTasks.filter(t => t.id !== taskId);
+              }, 5000);
+              setTimeout(() => { lucide.createIcons(); }, 50);
             })
             .withFailureHandler((err) => {
-              this.submitting = false;
-              this.showToast('Gagal: ' + err.toString(), 'error');
+              var task = this.backgroundTasks.find(t => t.id === taskId);
+              if (task) {
+                task.status = 'error';
+                task.progressText = 'Error: ' + err.toString();
+              }
+              this.broadcasts = this.broadcasts.filter(b => b.id !== tempId);
+              this.showToast('Koneksi terputus saat membuat broadcast instan!', 'error');
+              setTimeout(() => {
+                this.backgroundTasks = this.backgroundTasks.filter(t => t.id !== taskId);
+              }, 5000);
+              setTimeout(() => { lucide.createIcons(); }, 50);
             })
             .saveBroadcast(payload);
         },
@@ -4000,9 +4705,7 @@
             return;
           }
 
-          this.submitting = true;
-
-          // Save template edits to master automatically before sending
+          // Save template edits to master automatically before sending (fire and forget)
           var tmpl = this.templates.find((t) => t.id === this.broadcastForm.template_id);
           if (tmpl && tmpl.content !== this.broadcastForm.temp_content) {
             tmpl.content = this.broadcastForm.temp_content;
@@ -4033,22 +4736,75 @@
         },
 
         executeSaveBroadcast(payload) {
+          // --- OPTIMISTIC UI UPDATE FOR BROADCASTS ---
+          var tempId = 'TEMP-' + Date.now();
+          var tempBc = {
+            id: tempId,
+            name: payload.name,
+            segment_id: payload.segment_id,
+            template_id: payload.template_id,
+            status: 'Pending',
+            sent_count: 0,
+            total_count: payload.total_count,
+            created_at: new Date().toISOString()
+          };
+          
+          // Masukkan ke daftar lokal secara instan
+          this.broadcasts.unshift(tempBc);
+          
+          // Alihkan tab & tampilkan sukses instan
+          this.showToast('Campaign broadcast berhasil diantrikan!', 'success');
+          this.activeTab = 'broadcast_history';
+          
+          // Reset form secara instan
+          this.resetBroadcastForm();
+
+          // Buat background task
+          var taskId = Date.now();
+          this.backgroundTasks.push({
+            id: taskId,
+            name: 'Kirim Broadcast: ' + payload.name,
+            status: 'processing',
+            progressText: 'Membuat log antrean & menjadwalkan pesan di Google Sheets...'
+          });
+          setTimeout(() => { lucide.createIcons(); }, 50);
+
           google.script.run
             .withSuccessHandler((res) => {
-              this.submitting = false;
+              var task = this.backgroundTasks.find(t => t.id === taskId);
               if (res.ok) {
-                this.showToast('Broadcast Campaign berhasil dibuat!', 'success');
-                this.resetBroadcastForm();
-                this.fetchData();
-                // Redirect to status monitoring tab
-                this.activeTab = 'broadcast_history';
+                if (task) {
+                  task.status = 'success';
+                  task.progressText = 'Sukses mengantrikan broadcast!';
+                }
+                // Refresh senyap untuk mengganti item virtual dengan data database asli
+                this.fetchData(true);
               } else {
+                if (task) {
+                  task.status = 'error';
+                  task.progressText = 'Gagal: ' + res.message;
+                }
+                // Hapus item virtual jika gagal
+                this.broadcasts = this.broadcasts.filter(b => b.id !== tempId);
                 this.showToast('Gagal membuat campaign: ' + res.message, 'error');
               }
+              setTimeout(() => {
+                this.backgroundTasks = this.backgroundTasks.filter(t => t.id !== taskId);
+              }, 5000);
+              setTimeout(() => { lucide.createIcons(); }, 50);
             })
             .withFailureHandler((err) => {
-              this.submitting = false;
-              this.showToast('Gagal: ' + err.toString(), 'error');
+              var task = this.backgroundTasks.find(t => t.id === taskId);
+              if (task) {
+                task.status = 'error';
+                task.progressText = 'Error: ' + err.toString();
+              }
+              this.broadcasts = this.broadcasts.filter(b => b.id !== tempId);
+              this.showToast('Koneksi terputus saat membuat campaign!', 'error');
+              setTimeout(() => {
+                this.backgroundTasks = this.backgroundTasks.filter(t => t.id !== taskId);
+              }, 5000);
+              setTimeout(() => { lucide.createIcons(); }, 50);
             })
             .saveBroadcast(payload);
         },
@@ -4153,14 +4909,82 @@
           };
         },
 
+        // Users Manager CRUD Actions
+        getUserFormCSArray() {
+          if (!this.userModal.form.linked_cs_number) return [];
+          return String(this.userModal.form.linked_cs_number).split(',').map(function(n) { return n.trim(); }).filter(Boolean);
+        },
+
+        toggleCSInUserForm(number) {
+          var current = this.getUserFormCSArray();
+          var index = current.indexOf(number);
+          if (index === -1) {
+            current.push(number);
+          } else {
+            current.splice(index, 1);
+          }
+          this.userModal.form.linked_cs_number = current.join(', ');
+        },
+
+        openUserForm(usr) {
+          if (usr) {
+            this.userModal.isEdit = true;
+            this.userModal.form = { id: usr.id, username: usr.username, password: '', role: usr.role, linked_cs_number: usr.linked_cs_number || '', google_contact_label: usr.google_contact_label || 'CRM Leads' };
+          } else {
+            this.userModal.isEdit = false;
+            this.userModal.form = { id: '', username: '', password: '', role: 'CS Agent', linked_cs_number: '', google_contact_label: 'CRM Leads' };
+          }
+          this.userModal.open = true;
+        },
+
+        submitUserForm() {
+          this.submitting = true;
+          google.script.run
+            .withSuccessHandler((res) => {
+              this.submitting = false;
+              if (res.ok) {
+                this.userModal.open = false;
+                this.showToast('Data pengguna berhasil disimpan!', 'success');
+                this.fetchData();
+              } else {
+                this.showToast('Gagal menyimpan pengguna: ' + res.message, 'error');
+              }
+            })
+            .withFailureHandler((err) => {
+              this.submitting = false;
+              this.showToast('Gagal: ' + err.toString(), 'error');
+            })
+            .saveUser(this.userModal.form);
+        },
+
+        confirmDeleteUser(usr) {
+          this.confirmModal = {
+            open: true,
+            title: 'Hapus Akun Pengguna',
+            message: 'Apakah Anda yakin ingin menghapus akun user "' + usr.username + '"?',
+            onConfirm: () => {
+              google.script.run
+                .withSuccessHandler((res) => {
+                  if (res.ok) {
+                    this.showToast('Akun pengguna berhasil dihapus!', 'success');
+                    this.fetchData();
+                  } else {
+                    this.showToast('Gagal menghapus: ' + res.message, 'error');
+                  }
+                })
+                .deleteUser(usr.id);
+            }
+          };
+        },
+
         // CS Numbers CRUD Actions
         openCSForm(cs) {
           if (cs) {
             this.csModal.isEdit = true;
-            this.csModal.form = { id: cs.id, cs_name: cs.cs_name, whatsapp_number: this.displayPhone(cs.whatsapp_number) };
+            this.csModal.form = { id: cs.id, cs_name: cs.cs_name, whatsapp_number: this.displayPhone(cs.whatsapp_number), session_name: cs.session_name || '' };
           } else {
             this.csModal.isEdit = false;
-            this.csModal.form = { id: '', cs_name: '', whatsapp_number: '' };
+            this.csModal.form = { id: '', cs_name: '', whatsapp_number: '', session_name: '' };
           }
           this.csModal.open = true;
         },
@@ -4325,7 +5149,7 @@
         },
 
         getCSNameByNumber(number) {
-          if (!number) return '-';
+          if (!number || number === 'unassigned') return 'Belum Dialokasikan (Tanpa CS)';
           var cs = this.csNumbers.find(function(item) { return item.whatsapp_number.toString().trim() === number.toString().trim(); });
           return cs ? cs.cs_name + ' (' + this.displayPhone(number) + ')' : this.displayPhone(number);
         },
