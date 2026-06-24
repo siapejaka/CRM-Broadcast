@@ -29,38 +29,23 @@ function serializeForClient(value) {
   return value;
 }
 
-// Helper to generate SHA-256 Hash for Passwords
-function hashPassword(password) {
-  if (!password) return '';
-  var digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, password, Utilities.Charset.UTF_8);
-  var signature = [];
-  for (var i = 0; i < digest.length; i++) {
-    var byteVal = digest[i];
-    if (byteVal < 0) byteVal += 256;
-    var byteString = byteVal.toString(16);
-    if (byteString.length == 1) byteString = '0' + byteString;
-    signature.push(byteString);
-  }
-  return signature.join('');
-}
-
 // Ensures database structure exists and is healthy
 function setupDatabase() {
   try {
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     var sheets = {
       'Leads': ['ID', 'Name', 'WhatsApp', 'Tags', 'Owner WhatsApp', 'Created At', 'Last Broadcast At', 'Number Status', 'Last Number Check At', 'Inactive Reason', 'Email'],
-      'Segments': ['ID', 'Name', 'Include Tags', 'Exclude Tags', 'Created At'],
-      'Templates': ['ID', 'Name', 'Content', 'Product ID', 'Image URL', 'Created At'],
-      'Broadcasts': ['ID', 'Name', 'Segment ID', 'Template ID', 'Status', 'Sent Count', 'Total Count', 'Created At', 'Scheduled At', 'Delay Contact Min', 'Delay Contact Max', 'Delay Bubble Min', 'Delay Bubble Max', 'Throttle Count', 'Throttle Minutes', 'Add Tags', 'Remove Tags', 'Sender CS', 'Target Lead IDs'],
+      'Segments': ['ID', 'Name', 'Include Tags', 'Exclude Tags', 'Created At', 'Match Type', 'Owner CS'],
+      'Templates': ['ID', 'Name', 'Content', 'Product ID', 'Image URL', 'Created At', 'Owner CS'],
+      'Broadcasts': ['ID', 'Name', 'Segment ID', 'Template ID', 'Status', 'Sent Count', 'Total Count', 'Created At', 'Scheduled At', 'Delay Contact Min', 'Delay Contact Max', 'Delay Bubble Min', 'Delay Bubble Max', 'Throttle Count', 'Throttle Minutes', 'Add Tags', 'Remove Tags', 'Sender CS', 'Target Lead IDs', 'Continue Next Day'],
       'BroadcastLogs': ['ID', 'Broadcast ID', 'Lead ID', 'Lead Name', 'WhatsApp', 'Status', 'Message ID', 'Error Message', 'Sent At', 'Delivered At', 'Read At', 'Scheduled At', 'Message Content', 'Sender CS', 'Retry Count', 'Max Retry', 'Processing Started At', 'Updated At', 'Image URL'],
       'TagRules': ['ID', 'Trigger Tag', 'Tags to Add', 'Tags to Remove', 'Assign CS', 'Created At'],
-      'CSNumbers': ['ID', 'CS Name', 'WhatsApp Number', 'Session Name', 'Created At'],
+      'CSNumbers': ['ID', 'CS Name', 'WhatsApp Number', 'Created At'],
       'Products': ['ID', 'Product Name', 'Price', 'Description', 'Created At'],
-      'Tags': ['ID', 'Tag Name', 'Created At'],
-      'Users': ['ID', 'Username', 'Password', 'Role', 'Linked CS Number', 'Google Contact Label', 'Created At']
+      'Tags': ['ID', 'Tag Name', 'Created At', 'Owner CS'],
+      'Users': ['ID', 'Username', 'Password', 'Role', 'Linked CS Number', 'Created At'],
+      'AppSettings': ['Key', 'Value', 'Updated At']
     };
-    
     // Auto-Migrate Broadcasts sheet if it has the old 17-column format
     var broadcastsSheet = ss.getSheetByName('Broadcasts');
     if (broadcastsSheet && broadcastsSheet.getLastColumn() > 0) {
@@ -115,7 +100,7 @@ function setupDatabase() {
             
             migratedData.push([
               id, name, segmentId, templateId, status, sentCount, totalCount, createdAt, scheduledAt,
-              dcMin, dcMax, dbMin, dbMax, throttleCount, throttleMinutes, addTags, removeTags, senderCS, targetLeadIds
+              dcMin, dcMax, dbMin, dbMax, throttleCount, throttleMinutes, addTags, removeTags, senderCS, targetLeadIds, ''
             ]);
           }
         }
@@ -130,18 +115,25 @@ function setupDatabase() {
       if (!sheet) {
         sheet = ss.insertSheet(sheetName);
       }
-      sheet.getRange(1, 1, 1, sheets[sheetName].length).setValues([sheets[sheetName]]);
+      
+      // OTOMATISASI PEMBERSIHAN KOLOM REDUNDAN / MATI
+      var targetHeaders = sheets[sheetName];
+      var lastCol = sheet.getLastColumn();
+      if (lastCol > 0) {
+        var currentHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+        // Iterasi dari kanan ke kiri agar indeks kolom tidak bergeser saat dihapus
+        for (var c = currentHeaders.length - 1; c >= 0; c--) {
+          var colName = currentHeaders[c].toString().trim();
+          // Jika nama kolom di Google Sheets tidak ada di daftar skema terbaru, hapus kolom tersebut
+          if (colName && targetHeaders.indexOf(colName) === -1) {
+            sheet.deleteColumn(c + 1);
+          }
+        }
+      }
+      
+      // Tulis ulang baris header pertama agar selalu rapi dan sinkron
+      sheet.getRange(1, 1, 1, targetHeaders.length).setValues([targetHeaders]);
     }
-    
-    // Seed default administrator if Users sheet is empty
-    var usersSheet = ss.getSheetByName('Users');
-    var usersData = getSheetDataAsObjects(usersSheet);
-    if (usersData.length === 0) {
-      var defaultAdminId = 'U' + Utilities.getUuid().substring(0, 8).toUpperCase();
-      var hashedDefaultPassword = hashPassword('admin');
-      usersSheet.appendRow([defaultAdminId, 'admin', hashedDefaultPassword, 'Super Admin', '', 'CRM Leads', new Date().toISOString()]);
-    }
-
     return { ok: true, message: 'Database schema successfully generated/verified.' };
   } catch (err) {
     return { ok: false, message: err.toString() };
@@ -180,6 +172,49 @@ function spinText(text) {
   return text;
 }
 
+// Helper to evaluate nested tiered segment rules (AND / OR step-by-step)
+function evaluateSegmentRules(leadTags, rulesStr, matchTypeFallback) {
+  if (!rulesStr) return true;
+  var leadTagsLower = leadTags.map(function(t) { return t.toLowerCase().trim(); });
+  
+  // Deteksi jika format penyimpanan adalah JSON Rule Builder bertingkat
+  if (rulesStr.indexOf('[') === 0) {
+    try {
+      var rules = JSON.parse(rulesStr);
+      if (rules.length === 0) return true;
+      
+      var firstRule = rules[0];
+      if (!firstRule.tag) return true;
+      var result = leadTagsLower.indexOf(firstRule.tag.toLowerCase().trim()) !== -1;
+      
+      for (var i = 1; i < rules.length; i++) {
+        var currentRule = rules[i];
+        if (!currentRule.tag) continue;
+        var op = (currentRule.op || 'AND').toUpperCase();
+        var currentHas = leadTagsLower.indexOf(currentRule.tag.toLowerCase().trim()) !== -1;
+        
+        if (op === 'AND') {
+          result = result && currentHas;
+        } else if (op === 'OR') {
+          result = result || currentHas;
+        }
+      }
+      return result;
+    } catch (e) {
+      // Fallback jika terjadi kegagalan parsing JSON
+    }
+  }
+  
+  // Fallback ke logika lama (comma-separated list)
+  var inc = rulesStr.split(',').map(function(t) { return t.trim().toLowerCase(); }).filter(Boolean);
+  if (inc.length === 0) return true;
+  if (matchTypeFallback === 'AND') {
+    return inc.every(function(t) { return leadTagsLower.indexOf(t) !== -1; });
+  } else {
+    return inc.some(function(t) { return leadTagsLower.indexOf(t) !== -1; });
+  }
+}
+
 // Helper to locate a row by ID
 function findRowIndexById(sheet, id) {
   var data = sheet.getDataRange().getValues();
@@ -200,9 +235,6 @@ function getSessionNameByPhone(phone) {
     var data = getSheetDataAsObjects(sheet);
     for (var i = 0; i < data.length; i++) {
       if (normalizePhoneNumber(data[i].whatsapp_number) === cleanPhone) {
-        if (data[i].session_name) {
-          return data[i].session_name.toString().trim();
-        }
         var formattedName = data[i].cs_name.toString().trim()
           .replace(/[^a-zA-Z0-9]/g, '_') // Ganti spasi & karakter spesial dengan underscore
           .replace(/_+/g, '_');          // Gabung underscore ganda jika ada
@@ -234,119 +266,120 @@ function getSheetDataAsObjects(sheet) {
   return result;
 }
 
-// User Authentication Handler
-function loginUser(username, password) {
+// Helper to secure password using SHA-256
+function hashPassword(password) {
+  var digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, password);
+  var hexString = '';
+  for (var i = 0; i < digest.length; i++) {
+    var byteValue = digest[i];
+    if (byteValue < 0) byteValue += 256;
+    var byteString = byteValue.toString(16);
+    if (byteString.length == 1) byteString = '0' + byteString;
+    hexString += byteString;
+  }
+  return hexString;
+}
+
+// Retrieves complete CRM context in one single safe database query
+function getDashboardData() {
   try {
-    setupDatabase();
+    setupDatabase(); // Selalu jalankan verifikasi & migrasi database saat dashboard dibuka
+    syncAllBroadcastCounters(); // Sinkronisasi otomatis data log dari n8n ke tabel campaign
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-    var sheet = ss.getSheetByName('Users');
-    var users = getSheetDataAsObjects(sheet);
     
-    var cleanUsername = username.toString().trim().toLowerCase();
-    var hashedInput = hashPassword(password);
-    
-    for (var i = 0; i < users.length; i++) {
-      if (users[i].username.toString().toLowerCase() === cleanUsername && users[i].password === hashedInput) {
-        return {
-          ok: true,
-          user: {
-            id: users[i].id,
-            username: users[i].username,
-            role: users[i].role,
-            linked_cs_number: users[i].linked_cs_number || '',
-            google_contact_label: users[i].google_contact_label || 'CRM Leads'
-          }
-        };
-      }
+    var leadsSheet = ss.getSheetByName('Leads');
+    var segmentsSheet = ss.getSheetByName('Segments');
+    var templatesSheet = ss.getSheetByName('Templates');
+    var broadcastsSheet = ss.getSheetByName('Broadcasts');
+    var csNumbersSheet = ss.getSheetByName('CSNumbers');
+    var productsSheet = ss.getSheetByName('Products');
+    var tagsSheet = ss.getSheetByName('Tags');
+    var broadcastLogsSheet = ss.getSheetByName('BroadcastLogs');
+    var usersSheet = ss.getSheetByName('Users');
+    var tagRulesSheet = ss.getSheetByName('TagRules');
+    if (!tagRulesSheet) {
+      setupDatabase();
+      tagRulesSheet = ss.getSheetByName('TagRules');
     }
-    return { ok: false, message: 'Username atau Password salah!' };
+    
+    var leads = getSheetDataAsObjects(leadsSheet);
+    var segments = getSheetDataAsObjects(segmentsSheet);
+    var templates = getSheetDataAsObjects(templatesSheet);
+    var broadcasts = getSheetDataAsObjects(broadcastsSheet);
+    var tagRules = getSheetDataAsObjects(tagRulesSheet);
+    var csNumbers = getSheetDataAsObjects(csNumbersSheet);
+    var products = getSheetDataAsObjects(productsSheet);
+    var tags = getSheetDataAsObjects(tagsSheet);
+    var broadcastLogs = getSheetDataAsObjects(broadcastLogsSheet);
+    var users = getSheetDataAsObjects(usersSheet);
+    var wahaSettings = getWahaSettings();
+    var appSettingsRes = getAppSettings();
+    
+    return {
+      ok: true,
+      data: serializeForClient({
+        leads: leads,
+        segments: segments,
+        templates: templates,
+        broadcasts: broadcasts,
+        tag_rules: tagRules,
+        cs_numbers: csNumbers,
+        products: products,
+        tags: tags,
+        broadcast_logs: broadcastLogs,
+        users: users,
+        waha_settings: wahaSettings,
+        app_settings: appSettingsRes && appSettingsRes.data ? appSettingsRes.data : {
+          broadcast_start_hour: 5,
+          broadcast_end_hour: 22
+        }
+      })
+    };
   } catch (err) {
     return { ok: false, message: err.toString() };
   }
 }
 
-// Google Native Login verification using active session (No Client ID needed)
-function loginWithActiveGoogleAccount() {
-  try {
-    setupDatabase();
-    var email = Session.getEffectiveUser().getEmail();
-    if (!email) {
-      return { ok: false, message: 'Tidak dapat mendeteksi akun Google Anda. Pastikan Anda login ke Google di browser ini.' };
-    }
-    
-    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-    var sheet = ss.getSheetByName('Users');
-    var users = getSheetDataAsObjects(sheet);
-    
-    var cleanEmail = email.toLowerCase().trim();
-    for (var i = 0; i < users.length; i++) {
-      if (users[i].username.toString().toLowerCase() === cleanEmail) {
-        return {
-          ok: true,
-          user: {
-            id: users[i].id,
-            username: users[i].username,
-            role: users[i].role,
-            linked_cs_number: users[i].linked_cs_number || '',
-            google_contact_label: users[i].google_contact_label || 'CRM Leads'
-          }
-        };
-      }
-    }
-    return { ok: false, message: 'Email Google "' + email + '" belum didaftarkan di Manajemen User oleh Admin.' };
-  } catch (err) {
-    return { ok: false, message: err.toString() };
-  }
-}
-
-// Helper to get active Google Account Email
-function getActiveGoogleEmail() {
-  try {
-    var email = Session.getEffectiveUser().getEmail();
-    if (!email) {
-      return { ok: true, email: 'Gmail Aktif' };
-    }
-    return { ok: true, email: email };
-  } catch (e) {
-    return { ok: true, email: 'Gmail Aktif' };
-  }
-}
-
-// User Management CRUD
-function saveUser(userObj) {
+// CRUD for Users
+function saveUser(user) {
   try {
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     var sheet = ss.getSheetByName('Users');
+    if (!sheet) {
+      setupDatabase();
+      sheet = ss.getSheetByName('Users');
+    }
     var now = new Date().toISOString();
     
-    var cleanUsername = userObj.username.trim().toLowerCase();
-    var contactLabel = userObj.google_contact_label ? userObj.google_contact_label.trim() : 'CRM Leads';
-    
-    // Validasi duplikasi username
-    var existing = getSheetDataAsObjects(sheet);
-    for (var i = 0; i < existing.length; i++) {
-      if (existing[i].username.toLowerCase() === cleanUsername) {
-        if (!userObj.id || existing[i].id.toString() !== userObj.id.toString()) {
-          throw new Error('Username/Email "' + userObj.username + '" sudah digunakan oleh user lain.');
+    // Validasi duplikat username
+    var data = getSheetDataAsObjects(sheet);
+    for (var i = 0; i < data.length; i++) {
+      if (data[i].username.toLowerCase() === user.username.toLowerCase()) {
+        if (!user.id || data[i].id.toString() !== user.id.toString()) {
+          throw new Error('Username "' + user.username + '" sudah digunakan oleh user lain.');
         }
       }
     }
     
-    if (!userObj.id) {
+    // Gabungkan nomor-nomor CS terpilih menjadi format comma-separated
+    var linkedCS = Array.isArray(user.linked_cs_numbers) ? user.linked_cs_numbers.join(', ') : (user.linked_cs_numbers || '');
+    
+    if (!user.id) {
+      if (!user.password) throw new Error('Password wajib diisi untuk user baru.');
       var id = 'U' + Utilities.getUuid().substring(0, 8).toUpperCase();
-      var hashedPass = hashPassword(userObj.password || '123456'); // Default password jika kosong
-      sheet.appendRow([id, userObj.username, hashedPass, userObj.role, userObj.linked_cs_number || '', contactLabel, now]);
+      var hashedPw = hashPassword(user.password);
+      sheet.appendRow([id, user.username, hashedPw, user.role, linkedCS, now]);
     } else {
-      var rowIndex = findRowIndexById(sheet, userObj.id);
+      var rowIndex = findRowIndexById(sheet, user.id);
       if (rowIndex === -1) throw new Error('User tidak ditemukan');
       
-      // Update data dasar
-      sheet.getRange(rowIndex, 2).setValue(userObj.username);
-      sheet.getRange(rowIndex, 4, 1, 3).setValues([[userObj.role, userObj.linked_cs_number || '', contactLabel]]);
-      
-      // Update password hanya jika diisi baru
-      if (userObj.password && userObj.password.trim() !== '') {
-        sheet.getRange(rowIndex, 3).setValue(hashPassword(userObj.password));
+      if (user.password) {
+        var hashedPw = hashPassword(user.password);
+        sheet.getRange(rowIndex, 2, 1, 4).setValues([[user.username, hashedPw, user.role, linkedCS]]);
+      } else {
+        // Jika password dikosongkan saat edit, pertahankan password lama
+        sheet.getRange(rowIndex, 2).setValue(user.username);
+        sheet.getRange(rowIndex, 4, 1, 2).setValues([[user.role, linkedCS]]);
       }
     }
     return { ok: true };
@@ -361,89 +394,8 @@ function deleteUser(id) {
     var sheet = ss.getSheetByName('Users');
     var rowIndex = findRowIndexById(sheet, id);
     if (rowIndex === -1) throw new Error('User tidak ditemukan');
-    
-    // Proteksi agar admin tidak menghapus akun dirinya sendiri secara tidak sengaja
-    var usernameToDelete = sheet.getRange(rowIndex, 2).getValue().toString();
-    if (usernameToDelete === 'admin') {
-      throw new Error('User master "admin" tidak boleh dihapus demi keamanan sistem.');
-    }
-    
     sheet.deleteRow(rowIndex);
     return { ok: true };
-  } catch (err) {
-    return { ok: false, message: err.toString() };
-  }
-}
-
-// Retrieves complete CRM context with Server-Side Role Filtering
-function getDashboardData(activeUser) {
-  try {
-    setupDatabase(); // Selalu jalankan verifikasi & migrasi database saat dashboard dibuka
-    syncAllBroadcastCounters(); // Sinkronisasi otomatis data log dari n8n ke tabel campaign
-    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-    
-    var leadsSheet = ss.getSheetByName('Leads');
-    var segmentsSheet = ss.getSheetByName('Segments');
-    var templatesSheet = ss.getSheetByName('Templates');
-    var broadcastsSheet = ss.getSheetByName('Broadcasts');
-    var csNumbersSheet = ss.getSheetByName('CSNumbers');
-    var productsSheet = ss.getSheetByName('Products');
-    var tagsSheet = ss.getSheetByName('Tags');
-    var broadcastLogsSheet = ss.getSheetByName('BroadcastLogs');
-    var tagRulesSheet = ss.getSheetByName('TagRules');
-    var usersSheet = ss.getSheetByName('Users');
-    
-    var leads = getSheetDataAsObjects(leadsSheet);
-    var segments = getSheetDataAsObjects(segmentsSheet);
-    var templates = getSheetDataAsObjects(templatesSheet);
-    var broadcasts = getSheetDataAsObjects(broadcastsSheet);
-    var tagRules = getSheetDataAsObjects(tagRulesSheet);
-    var csNumbers = getSheetDataAsObjects(csNumbersSheet);
-    var products = getSheetDataAsObjects(productsSheet);
-    var tags = getSheetDataAsObjects(tagsSheet);
-    var broadcastLogs = getSheetDataAsObjects(broadcastLogsSheet);
-    var users = getSheetDataAsObjects(usersSheet);
-    var wahaSettings = getWahaSettings();
-    
-    // --- SERVER-SIDE DATA FILTERING BASED ON ROLE ---
-    if (activeUser && activeUser.role === 'CS Agent') {
-      var linkedCSStr = String(activeUser.linked_cs_number || '');
-      var linkedCSNumbers = linkedCSStr.split(',').map(function(num) {
-        return normalizePhoneNumber(num.trim());
-      }).filter(Boolean);
-      
-      // 1. Saring Kontak (Leads) milik CS tersebut saja (jika nomor owner cocok dengan salah satu nomor yang dikaitkan)
-      leads = leads.filter(function(lead) {
-        return linkedCSNumbers.indexOf(normalizePhoneNumber(lead.owner_whatsapp)) !== -1;
-      });
-      
-      // 2. Saring Broadcast Campaign yang dikirim oleh CS tersebut saja
-      broadcasts = broadcasts.filter(function(bc) {
-        return linkedCSNumbers.indexOf(normalizePhoneNumber(bc.sender_cs)) !== -1;
-      });
-      
-      // 3. Saring Log Detail yang dikirim oleh CS tersebut saja
-      broadcastLogs = broadcastLogs.filter(function(log) {
-        return linkedCSNumbers.indexOf(normalizePhoneNumber(log.sender_cs)) !== -1;
-      });
-    }
-    
-    return {
-      ok: true,
-      data: serializeForClient({
-        leads: leads,
-        segments: segments,
-        templates: templates,
-        broadcasts: broadcasts,
-        tag_rules: tagRules,
-        cs_numbers: csNumbers,
-        products: products,
-        tags: tags,
-        broadcast_logs: broadcastLogs,
-        waha_settings: wahaSettings,
-        users: users
-      })
-    };
   } catch (err) {
     return { ok: false, message: err.toString() };
   }
@@ -548,26 +500,32 @@ function saveLead(lead) {
     var lookupWA = formattedWhatsapp;
     
     if (!lead.id) {
-      // Proteksi Duplikat Manual
+      // Izinkan nomor yang sama dimiliki banyak CS, hanya cegah duplikat pada owner yang sama.
+      // Jika owner kosong, tetap izinkan penyimpanan agar lead bisa menjadi entri independen.
       var data = sheet.getDataRange().getValues();
       for (var i = 1; i < data.length; i++) {
-        if (normalizePhoneNumber(data[i][2]) === lookupWA) {
-          throw new Error('Nomor WhatsApp ' + lookupWA + ' sudah terdaftar dengan nama ' + data[i][1]);
+        var rowWA = normalizePhoneNumber(data[i][2]);
+        var rowOwner = normalizePhoneNumber(data[i][4]);
+        if (formattedOwner && rowWA === lookupWA && rowOwner === formattedOwner) {
+          throw new Error('Nomor WhatsApp ' + lookupWA + ' sudah terdaftar pada CS ini dengan nama ' + data[i][1]);
         }
       }
       var id = 'L' + Utilities.getUuid().substring(0, 8).toUpperCase();
-      sheet.appendRow([id, lead.name, formattedWhatsapp, processedTags, formattedOwner, now, '', 'Unchecked', '', '']);
+      sheet.appendRow([id, lead.name, formattedWhatsapp, processedTags, formattedOwner, now, '', 'Unchecked', '', '', lead.email || '']);
     } else {
       var rowIndex = findRowIndexById(sheet, lead.id);
       if (rowIndex === -1) throw new Error('Lead not found');
-      // Pastikan edit tidak mengubah nomor menjadi nomor milik orang lain yang sudah terdaftar
+      // Saat edit, hanya blok jika bentrok dengan owner CS yang sama
       var data = sheet.getDataRange().getValues();
       for (var i = 1; i < data.length; i++) {
-        if (i + 1 !== rowIndex && normalizePhoneNumber(data[i][2]) === lookupWA) {
-          throw new Error('Gagal update: Nomor WhatsApp ' + lookupWA + ' sudah digunakan oleh kontak lain (' + data[i][1] + ')');
+        var rowWA = normalizePhoneNumber(data[i][2]);
+        var rowOwner = normalizePhoneNumber(data[i][4]);
+        if (i + 1 !== rowIndex && formattedOwner && rowWA === lookupWA && rowOwner === formattedOwner) {
+          throw new Error('Gagal update: Nomor WhatsApp ' + lookupWA + ' sudah digunakan oleh kontak lain pada CS ini (' + data[i][1] + ')');
         }
       }
       sheet.getRange(rowIndex, 2, 1, 4).setValues([[lead.name, formattedWhatsapp, processedTags, formattedOwner]]);
+      sheet.getRange(rowIndex, 11).setValue(lead.email || '');
     }
     return { ok: true };
   } catch (err) {
@@ -654,15 +612,32 @@ function importLeads(leads) {
       sheet = ss.getSheetByName('Leads');
     }
     
+    var tagsSheet = ss.getSheetByName('Tags');
+    if (!tagsSheet) {
+      setupDatabase();
+      tagsSheet = ss.getSheetByName('Tags');
+    }
+    
+    // Ambil daftar master tag untuk pencocokan casing dan deteksi tag baru
+    var masterTagsData = tagsSheet.getDataRange().getValues();
+    var masterTagNamesLower = {};
+    for (var i = 1; i < masterTagsData.length; i++) {
+      var tName = masterTagsData[i][1].toString().trim();
+      if (tName) {
+        masterTagNamesLower[tName.toLowerCase()] = tName;
+      }
+    }
+    
     var data = sheet.getDataRange().getValues();
     var headers = data[0];
     
-    // Build map of existing normalized WhatsApp numbers to row index (0-based in data array)
+    // Build map of existing normalized WhatsApp + Owner combinations to row index (0-based in data array)
     var existingMap = {};
     for (var i = 1; i < data.length; i++) {
       var wa = normalizePhoneNumber(data[i][2]);
+      var owner = normalizePhoneNumber(data[i][4]);
       if (wa) {
-        existingMap[wa] = i;
+        existingMap[wa + '_' + owner] = i;
       }
     }
     
@@ -675,49 +650,103 @@ function importLeads(leads) {
       rules = getSheetDataAsObjects(ruleSheet);
     }
     
+    var newTagsToAddToMaster = [];
+    var newTagsToAddToMasterLower = {};
+    
     for (var j = 0; j < leads.length; j++) {
       var lead = leads[j];
       var rawWA = lead.whatsapp ? lead.whatsapp.toString().trim() : '';
       if (!rawWA) continue;
       
       var wa = normalizePhoneNumber(rawWA);
-      
-      // Local processing using cached rules
-      var processedTags = processTagAutomationsWithRules(lead.tags || '', rules);
-      var finalOwner = processCSAutoAssignWithRules(processedTags, lead.owner_whatsapp || '', rules);
-      
+      var finalOwner = processCSAutoAssignWithRules('', lead.owner_whatsapp || '', rules);
       var formattedOwner = finalOwner ? normalizePhoneNumber(finalOwner) : '';
+      var key = wa + '_' + formattedOwner;
       
-      var waForSheet = wa;
+      // Pecah label baru dari file import
+      var incomingTags = (lead.tags || '').toString().split(',').map(function(t) { return t.trim(); }).filter(Boolean);
+      
+      // Ambil label lama jika kontak sudah terdaftar
+      var existingTags = [];
+      if (existingMap[key]) {
+        var idx = existingMap[key];
+        existingTags = data[idx][3].toString().split(',').map(function(t) { return t.trim(); }).filter(Boolean);
+      }
+      
+      // Gabungkan label lama & label baru tanpa duplikasi (case-insensitive)
+      var mergedTags = [].concat(existingTags);
+      var mergedTagsLower = mergedTags.map(function(t) { return t.toLowerCase(); });
+      
+      incomingTags.forEach(function(tag) {
+        var tagLower = tag.toLowerCase();
+        // Gunakan casing dari master tag jika sudah ada, jika belum gunakan casing dari file import
+        var resolvedTag = masterTagNamesLower[tagLower] || tag;
+        var resolvedTagLower = resolvedTag.toLowerCase();
+        
+        if (mergedTagsLower.indexOf(resolvedTagLower) === -1) {
+          mergedTags.push(resolvedTag);
+          mergedTagsLower.push(resolvedTagLower);
+        }
+      });
+      
+      // Jalankan aturan otomatisasi tag (Tag Rules) secara lokal
+      var processedTagsStr = processTagAutomationsWithRules(mergedTags.join(', '), rules);
+      var processedTags = processedTagsStr.split(',').map(function(t) { return t.trim(); }).filter(Boolean);
+      
+      // Deteksi jika hasil akhir pemrosesan memiliki tag yang belum terdaftar di master Tags
+      processedTags.forEach(function(tag) {
+        var tagLower = tag.toLowerCase();
+        if (!masterTagNamesLower[tagLower] && !newTagsToAddToMasterLower[tagLower]) {
+          newTagsToAddToMaster.push(tag);
+          newTagsToAddToMasterLower[tagLower] = true;
+        }
+      });
+      
+      var finalOwner = processCSAutoAssignWithRules(processedTagsStr, lead.owner_whatsapp || '', rules);
+      var formattedOwner = finalOwner ? normalizePhoneNumber(finalOwner) : '';
       var ownerForSheet = formattedOwner ? formattedOwner : '';
+      var key = wa + '_' + ownerForSheet;
       
-      if (existingMap[wa]) {
-        var idx = existingMap[wa];
+      if (existingMap[key]) {
+        var idx = existingMap[key];
         data[idx][1] = lead.name || 'No Name';
-        data[idx][2] = waForSheet;
-        data[idx][3] = processedTags;
+        data[idx][2] = wa;
+        data[idx][3] = processedTagsStr;
         data[idx][4] = ownerForSheet;
+        if (lead.email) {
+          data[idx][10] = lead.email; // Email berada di kolom ke-11 (indeks 10)
+        }
         // Keep other columns intact
       } else {
         var id = 'L' + Utilities.getUuid().substring(0, 8).toUpperCase();
         data.push([
           id,
           lead.name || 'No Name',
-          waForSheet,
-          processedTags,
+          wa,
+          processedTagsStr,
           ownerForSheet,
           now,          // Created At
           '',           // Last Broadcast At
           'Unchecked',  // Number Status
           '',           // Last Number Check At
-          ''            // Inactive Reason
+          '',           // Inactive Reason
+          lead.email || '' // Email (indeks 10)
         ]);
-        existingMap[wa] = data.length - 1;
+        existingMap[key] = data.length - 1;
       }
     }
     
+    // Tulis kembali seluruh data Leads
     sheet.clearContents();
     sheet.getRange(1, 1, data.length, headers.length).setValues(data);
+    
+    // Tulis otomatis tag baru yang ditemukan ke master sheet Tags
+    if (newTagsToAddToMaster.length > 0) {
+      newTagsToAddToMaster.forEach(function(newTag) {
+        var tagId = 'TAG' + Utilities.getUuid().substring(0, 8).toUpperCase();
+        tagsSheet.appendRow([tagId, newTag, now]);
+      });
+    }
     
     return { ok: true, message: 'Berhasil memproses ' + leads.length + ' kontak dalam sekejap!' };
   } catch (err) {
@@ -798,14 +827,16 @@ function saveSegment(segment) {
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     var sheet = ss.getSheetByName('Segments');
     var now = new Date().toISOString();
+    var matchType = segment.match_type || 'AND';
     
     if (!segment.id) {
       var id = 'S' + Utilities.getUuid().substring(0, 8).toUpperCase();
-      sheet.appendRow([id, segment.name, segment.include_tags, segment.exclude_tags, now]);
+      sheet.appendRow([id, segment.name, segment.include_tags, segment.exclude_tags, now, matchType, segment.owner_cs || '']);
     } else {
       var rowIndex = findRowIndexById(sheet, segment.id);
       if (rowIndex === -1) throw new Error('Segment not found');
       sheet.getRange(rowIndex, 2, 1, 3).setValues([[segment.name, segment.include_tags, segment.exclude_tags]]);
+      sheet.getRange(rowIndex, 6, 1, 2).setValues([[matchType, segment.owner_cs || '']]);
     }
     return { ok: true };
   } catch (err) {
@@ -838,11 +869,12 @@ function saveTemplate(template) {
     
     if (!template.id) {
       var id = 'T' + Utilities.getUuid().substring(0, 8).toUpperCase();
-      sheet.appendRow([id, template.name, template.content, productId, imageUrl, now]);
+      sheet.appendRow([id, template.name, template.content, productId, imageUrl, now, template.owner_cs || '']);
     } else {
       var rowIndex = findRowIndexById(sheet, template.id);
       if (rowIndex === -1) throw new Error('Template not found');
       sheet.getRange(rowIndex, 2, 1, 4).setValues([[template.name, template.content, productId, imageUrl]]);
+      sheet.getRange(rowIndex, 7).setValue(template.owner_cs || '');
     }
     return { ok: true };
   } catch (err) {
@@ -898,13 +930,12 @@ function saveBroadcast(broadcast) {
         var segments = getSheetDataAsObjects(segmentsSheet);
         var segment = segments.find(function(s) { return s.id === broadcast.segment_id; });
         if (segment) {
-          var inc = segment.include_tags ? segment.include_tags.split(',').map(function(t) { return t.trim().toLowerCase(); }).filter(Boolean) : [];
           var exc = segment.exclude_tags ? segment.exclude_tags.split(',').map(function(t) { return t.trim().toLowerCase(); }).filter(Boolean) : [];
+          var matchType = segment.match_type ? segment.match_type.toString().toUpperCase() : 'AND';
           targetIds = leadsData.filter(function(lead) {
             var leadTags = lead.tags ? lead.tags.split(',').map(function(t) { return t.trim().toLowerCase(); }).filter(Boolean) : [];
             if (leadTags.some(function(t) { return exc.indexOf(t) !== -1; })) return false;
-            if (inc.length > 0 && !leadTags.some(function(t) { return inc.indexOf(t) !== -1; })) return false;
-            return true;
+            return evaluateSegmentRules(leadTags, segment.include_tags, matchType);
           }).map(function(l) { return l.id; });
         }
       }
@@ -912,42 +943,18 @@ function saveBroadcast(broadcast) {
       // Pecah teks berdasarkan [BUBBLE] untuk menghitung total baris log sesungguhnya
       var bubbles = rawContent.split('[BUBBLE]').map(function(b) { return b.trim(); }).filter(Boolean);
       if (bubbles.length === 0) bubbles = [rawContent];
-      
-      var calculatedTotalCount = targetIds.length * bubbles.length;
 
-              sheet.appendRow([
-                id, 
-                broadcast.name, 
-                broadcast.segment_id, 
-                broadcast.template_id, 
-                'Pending', 
-                0, 
-                calculatedTotalCount, // Total baris log yang akan dibuat
-                now,
-                broadcast.scheduled_at || '',
-                broadcast.delay_contact_min || 15, // Kolom J: Delay Contact Min
-                broadcast.delay_contact_max || 30, // Kolom K: Delay Contact Max
-                broadcast.delay_bubble_min || 0,   // Kolom L: Delay Bubble Min
-                broadcast.delay_bubble_max || 0,   // Kolom M: Delay Bubble Max
-                broadcast.throttle_count || 0,      // Kolom N: Throttle Count
-                broadcast.throttle_minutes || 0,    // Kolom O: Throttle Minutes
-                broadcast.add_tags || '',           // Kolom P: Add Tags
-                broadcast.remove_tags || '',        // Kolom Q: Remove Tags
-                senderCS,                           // Kolom R: Sender CS
-                targetLeadIds                       // Kolom S: Target Lead IDs
-              ]);
-
-      // Eksekusi perubahan tag langsung ke database kontak saat submit broadcast (Instant)
-      if (broadcast.add_tags) {
-        bulkUpdateLeadTags(targetIds, 'ADD', broadcast.add_tags);
-      }
-      if (broadcast.remove_tags) {
-        bulkUpdateLeadTags(targetIds, 'REMOVE', broadcast.remove_tags);
-      }
-
-      // Buat log antrean penerima detail (BroadcastLogs) secara otomatis per bubble
-      var logSheet = ss.getSheetByName('BroadcastLogs');
       var baseTime = broadcast.scheduled_at ? new Date(broadcast.scheduled_at) : new Date();
+      var windowSettings = getBroadcastWindowSettings_();
+      var startHour = windowSettings.startHour;
+      var endHour = windowSettings.endHour;
+
+      if (!isTimeWithinBroadcastWindow_(baseTime, startHour, endHour)) {
+        return {
+          ok: false,
+          message: 'Broadcast hanya diizinkan pada jam ' + formatBroadcastWindowLabel_(startHour, endHour) + '. Jadwal yang Anda pilih berada di luar jam broadcast.'
+        };
+      }
       
       // Ambil parameter jeda kontak & jeda bubble secara terpisah
       var delayContactMin = parseInt(broadcast.delay_contact_min || 15);
@@ -959,88 +966,177 @@ function saveBroadcast(broadcast) {
       var throttleMinutes = parseInt(broadcast.throttle_minutes || 0);
       
       var runningTime = baseTime.getTime();
+      var acceptedLeadIds = [];
+      var overflowLeadIds = [];
+      var logRows = [];
+      var continueNextDay = String(broadcast.continue_next_day || '').toLowerCase() === 'true';
 
       targetIds.forEach(function(leadId, leadIndex) {
         var lead = leadsData.find(function(l) { return l.id === leadId; });
-        if (lead) {
-          
-          // 1. JEDA ANTAR KONTAK: Jika beralih ke kontak baru (bukan kontak pertama), tambahkan jeda kontak acak
-          if (leadIndex > 0) {
-            var contactDelay = delayContactMin;
-            if (delayContactMax > delayContactMin) {
-              contactDelay = Math.floor(Math.random() * (delayContactMax - delayContactMin + 1)) + delayContactMin;
-            }
-            runningTime += contactDelay * 1000;
+        if (!lead) return;
 
-            // Istirahat Sesi (Throttle): Jika batas sesi tercapai, tambahkan waktu istirahat panjang
-            if (throttleCount > 0 && throttleMinutes > 0 && leadIndex % throttleCount === 0) {
-              runningTime += throttleMinutes * 60 * 1000;
+        var previewRunningTime = runningTime;
+
+        if (leadIndex > 0) {
+          var previewContactDelay = delayContactMin;
+          if (delayContactMax > delayContactMin) {
+            previewContactDelay = Math.floor(Math.random() * (delayContactMax - delayContactMin + 1)) + delayContactMin;
+          }
+          previewRunningTime += previewContactDelay * 1000;
+
+          if (throttleCount > 0 && throttleMinutes > 0 && leadIndex % throttleCount === 0) {
+            previewRunningTime += throttleMinutes * 60 * 1000;
+          }
+        }
+
+        var firstLeadTime = previewRunningTime;
+        var firstLeadDate = new Date(firstLeadTime);
+        if (!isTimeWithinBroadcastWindow_(firstLeadDate, startHour, endHour)) {
+          if (continueNextDay) {
+            previewRunningTime = moveToNextBroadcastDay_(firstLeadTime, startHour);
+          } else {
+            overflowLeadIds.push(leadId);
+            return;
+          }
+        }
+
+        var perLeadTime = previewRunningTime;
+        var leadLogRows = [];
+        var isOverflow = false;
+
+        bubbles.forEach(function(bubbleText, bubbleIndex) {
+          if (bubbleIndex > 0) {
+            var previewBubbleDelay = delayBubbleMin;
+            if (delayBubbleMax > delayBubbleMin) {
+              previewBubbleDelay = Math.floor(Math.random() * (delayBubbleMax - delayBubbleMin + 1)) + delayBubbleMin;
+            }
+            perLeadTime += previewBubbleDelay * 1000;
+          }
+
+          var scheduledDate = new Date(perLeadTime);
+          if (!isTimeWithinBroadcastWindow_(scheduledDate, startHour, endHour)) {
+            if (continueNextDay) {
+              perLeadTime = moveToNextBroadcastDay_(perLeadTime, startHour);
+              scheduledDate = new Date(perLeadTime);
+            } else {
+              isOverflow = true;
+              return;
             }
           }
 
-          // Proses setiap bubble untuk kontak saat ini
-          bubbles.forEach(function(bubbleText, bubbleIndex) {
-            
-            // 2. JEDA ANTAR BUBBLE: Jika ini adalah bubble ke-2 atau seterusnya untuk kontak yang sama
-            if (bubbleIndex > 0) {
-              var bubbleDelay = delayBubbleMin;
-              if (delayBubbleMax > delayBubbleMin) {
-                bubbleDelay = Math.floor(Math.random() * (delayBubbleMax - delayBubbleMin + 1)) + delayBubbleMin;
-              }
-              runningTime += bubbleDelay * 1000;
+          var scheduledTimeStr = scheduledDate.toISOString();
+          var logId = 'LOG' + Utilities.getUuid().substring(0, 8).toUpperCase();
+          
+          var bubbleImage = '';
+          var cleanBubbleText = bubbleText;
+          if (bubbleText.indexOf('[IMAGE:') === 0) {
+            var closeIndex = bubbleText.indexOf(']');
+            if (closeIndex !== -1) {
+              bubbleImage = bubbleText.substring(7, closeIndex);
+              cleanBubbleText = bubbleText.substring(closeIndex + 1).trim();
             }
+          }
 
-            var scheduledTimeStr = new Date(runningTime).toISOString();
-            var logId = 'LOG' + Utilities.getUuid().substring(0, 8).toUpperCase();
-            
-            // Ekstrak tag gambar [IMAGE:url] khusus pada bubble ini jika ada
-            var bubbleImage = '';
-            var cleanBubbleText = bubbleText;
-            if (bubbleText.indexOf('[IMAGE:') === 0) {
-              var closeIndex = bubbleText.indexOf(']');
-              if (closeIndex !== -1) {
-                bubbleImage = bubbleText.substring(7, closeIndex);
-                cleanBubbleText = bubbleText.substring(closeIndex + 1).trim();
-              }
-            }
+          var personalizedMessage = cleanBubbleText
+            .replace(/\{\{name\}\}/g, lead.name)
+            .replace(/\{\{whatsapp\}\}/g, lead.whatsapp)
+            .replace(/\{\{product_name\}\}/g, pName)
+            .replace(/\{\{product_price\}\}/g, pPrice);
+          
+          var spunMessage = spinText(personalizedMessage);
+          
+          leadLogRows.push([
+            logId,
+            id,
+            lead.id,
+            lead.name,
+            lead.whatsapp,
+            'Pending',
+            '',
+            '',
+            '',
+            '',
+            '',
+            scheduledTimeStr,
+            spunMessage,
+            senderCS,
+            0,
+            3,
+            '',
+            now,
+            bubbleImage
+          ]);
+        });
 
-            var personalizedMessage = cleanBubbleText
-              .replace(/\{\{name\}\}/g, lead.name)
-              .replace(/\{\{whatsapp\}\}/g, lead.whatsapp)
-              .replace(/\{\{product_name\}\}/g, pName)
-              .replace(/\{\{product_price\}\}/g, pPrice);
-            
-            // Acak kata menggunakan sistem Spintax sebelum masuk ke database log
-            var spunMessage = spinText(personalizedMessage);
-            
-            logSheet.appendRow([
-              logId,
-              id, // Broadcast ID
-              lead.id,
-              lead.name,
-              lead.whatsapp,
-              'Pending',
-              '', // Message ID
-              '', // Error Message
-              '', // Sent At
-              '', // Delivered At
-              '', // Read At
-              scheduledTimeStr, // Scheduled At
-              spunMessage, // Message Content
-              senderCS, // Sender CS
-              0, // Retry Count
-              3, // Max Retry
-              '', // Processing Started At
-              now, // Updated At
-              bubbleImage // Image URL (Kolom S) - Menggunakan gambar spesifik dari bubble ini
-            ]);
-          });
+        if (isOverflow || leadLogRows.length !== bubbles.length) {
+          overflowLeadIds.push(leadId);
+          return;
         }
+
+        acceptedLeadIds.push(leadId);
+        logRows = logRows.concat(leadLogRows);
+        runningTime = perLeadTime;
       });
+
+      var calculatedTotalCount = logRows.length;
+
+      sheet.appendRow([
+        id, 
+        broadcast.name, 
+        broadcast.segment_id, 
+        broadcast.template_id, 
+        calculatedTotalCount > 0 ? 'Pending' : 'Cancelled', 
+        0, 
+        calculatedTotalCount,
+        now,
+        broadcast.scheduled_at || '',
+        broadcast.delay_contact_min || 15,
+        broadcast.delay_contact_max || 30,
+        broadcast.delay_bubble_min || 0,
+        broadcast.delay_bubble_max || 0,
+        broadcast.throttle_count || 0,
+        broadcast.throttle_minutes || 0,
+        broadcast.add_tags || '',
+        broadcast.remove_tags || '',
+        senderCS,
+        acceptedLeadIds.join(', '),
+        continueNextDay ? 'TRUE' : 'FALSE'
+      ]);
+
+      if (acceptedLeadIds.length > 0) {
+        if (broadcast.add_tags) {
+          bulkUpdateLeadTags(acceptedLeadIds, 'ADD', broadcast.add_tags);
+        }
+        if (broadcast.remove_tags) {
+          bulkUpdateLeadTags(acceptedLeadIds, 'REMOVE', broadcast.remove_tags);
+        }
+      }
+
+      var logSheet = ss.getSheetByName('BroadcastLogs');
+      if (logRows.length > 0) {
+        logSheet.getRange(logSheet.getLastRow() + 1, 1, logRows.length, logRows[0].length).setValues(logRows);
+      }
+
+      if (acceptedLeadIds.length === 0) {
+        return {
+          ok: false,
+          message: 'Semua target melebihi batas jam broadcast ' + formatBroadcastWindowLabel_(startHour, endHour) + '. Tidak ada kontak yang diantrikan.'
+        };
+      }
+
+      if (overflowLeadIds.length > 0) {
+        return {
+          ok: true,
+          partial: true,
+          message: overflowLeadIds.length + ' kontak otomatis dikeluarkan karena melebihi batas jam broadcast ' + formatBroadcastWindowLabel_(startHour, endHour) + '. Tag pada kontak yang dikeluarkan tidak ikut diubah.',
+          overflow_lead_ids: overflowLeadIds,
+          accepted_lead_ids: acceptedLeadIds
+        };
+      }
     } else {
       var rowIndex = findRowIndexById(sheet, broadcast.id);
       if (rowIndex === -1) throw new Error('Broadcast not found');
-      sheet.getRange(rowIndex, 2, 1, 18).setValues([[
+      sheet.getRange(rowIndex, 2, 1, 19).setValues([[
         broadcast.name, 
         broadcast.segment_id, 
         broadcast.template_id, 
@@ -1058,7 +1154,8 @@ function saveBroadcast(broadcast) {
         broadcast.add_tags || '',
         broadcast.remove_tags || '',
         senderCS,
-        targetLeadIds
+        targetLeadIds,
+        broadcast.continue_next_day ? 'TRUE' : 'FALSE'
       ]]);
     }
     return { ok: true };
@@ -1419,7 +1516,6 @@ function saveCSNumber(cs) {
     var now = new Date().toISOString();
     
     var formattedWA = normalizePhoneNumber(cs.whatsapp_number);
-    var sessionName = cs.session_name ? cs.session_name.trim() : '';
     
     // Validasi: 1 nomor CS hanya boleh dikelola oleh 1 entitas CS saja
     var data = getSheetDataAsObjects(sheet);
@@ -1435,11 +1531,11 @@ function saveCSNumber(cs) {
     
     if (!cs.id) {
       var id = 'CS' + Utilities.getUuid().substring(0, 8).toUpperCase();
-      sheet.appendRow([id, cs.cs_name, formattedWA, sessionName, now]);
+      sheet.appendRow([id, cs.cs_name, formattedWA, now]);
     } else {
       var rowIndex = findRowIndexById(sheet, cs.id);
       if (rowIndex === -1) throw new Error('CS Number tidak ditemukan');
-      sheet.getRange(rowIndex, 2, 1, 3).setValues([[cs.cs_name, formattedWA, sessionName]]);
+      sheet.getRange(rowIndex, 2, 1, 2).setValues([[cs.cs_name, formattedWA]]);
     }
     return { ok: true };
   } catch (err) {
@@ -1512,13 +1608,15 @@ function saveTag(tagObj) {
 
     if (!tagObj.id) {
       var existing = getSheetDataAsObjects(sheet);
+      // Validasi duplikat tag diisolasi per pembuat CS (CS hanya divalidasi dengan tag buatan mereka sendiri)
       for (var i = 0; i < existing.length; i++) {
-        if (existing[i].tag_name.toLowerCase() === newTagName.toLowerCase()) {
+        if (existing[i].tag_name.toLowerCase() === newTagName.toLowerCase() && 
+            (!tagObj.owner_cs || existing[i].owner_cs.toLowerCase() === tagObj.owner_cs.toLowerCase())) {
           throw new Error('Tag "' + newTagName + '" sudah terdaftar.');
         }
       }
       var id = 'TAG' + Utilities.getUuid().substring(0, 8).toUpperCase();
-      sheet.appendRow([id, newTagName, now]);
+      sheet.appendRow([id, newTagName, now, tagObj.owner_cs || '']);
     } else {
       var rowIndex = findRowIndexById(sheet, tagObj.id);
       if (rowIndex === -1) throw new Error('Tag tidak ditemukan');
@@ -1528,6 +1626,7 @@ function saveTag(tagObj) {
         sheet.getRange(rowIndex, 2).setValue(newTagName);
         propagateTagRename(oldTagName, newTagName);
       }
+      sheet.getRange(rowIndex, 4).setValue(tagObj.owner_cs || '');
     }
     return { ok: true };
   } catch (err) {
@@ -1679,114 +1778,6 @@ function propagateTagDeletion(tagName) {
   }
 }
 
-// Sync single contact to Google Contacts (Direct Server-Side without OAuth Client ID)
-function syncContactToGoogleDirect(contactName, contactPhone, labelName) {
-  try {
-    var formattedPhone = '+' + normalizePhoneNumber(contactPhone);
-    if (!formattedPhone) throw new Error('Nomor telepon tidak valid');
-    
-    // Ambil atau buat group label secara otomatis
-    var group = ContactsApp.getContactGroup(labelName);
-    if (!group) {
-      group = ContactsApp.createContactGroup(labelName);
-    }
-    
-    // Cek duplikasi kontak berdasarkan nomor telepon
-    var existingContacts = ContactsApp.getContactsByPhone(formattedPhone);
-    var contact;
-    if (existingContacts.length > 0) {
-      contact = existingContacts[0];
-      contact.setFullName(contactName);
-    } else {
-      contact = ContactsApp.createContact(contactName, '', '');
-      contact.addPhone(ContactsApp.Field.MOBILE_PHONE, formattedPhone);
-    }
-    
-    contact.addToGroup(group);
-    return { ok: true };
-  } catch (err) {
-    return { ok: false, message: err.toString() };
-  }
-}
-
-// Bulk sync contacts to Google Contacts (Direct Server-Side)
-function bulkSyncContactsToGoogleDirect(contactsArray, labelName) {
-  try {
-    var successCount = 0;
-    var errors = [];
-    
-    for (var i = 0; i < contactsArray.length; i++) {
-      var c = contactsArray[i];
-      var res = syncContactToGoogleDirect(c.name, c.whatsapp, labelName);
-      if (res.ok) {
-        successCount++;
-      } else {
-        errors.push(c.name + ': ' + res.message);
-      }
-    }
-    
-    return {
-      ok: true,
-      successCount: successCount,
-      total: contactsArray.length,
-      errors: errors
-    };
-  } catch (err) {
-    return { ok: false, message: err.toString() };
-  }
-}
-
-// Mengambil semua Group/Label Google Contacts milik user aktif
-function getGoogleContactGroups() {
-  try {
-    var groups = ContactsApp.getContactGroups();
-    var list = groups.map(function(g) {
-      return { id: g.getId(), name: g.getName() };
-    });
-    return { ok: true, data: list };
-  } catch (e) {
-    return { ok: false, message: e.toString() };
-  }
-}
-
-// Menarik semua kontak berdasarkan label terpilih dari Google Contacts user aktif
-function getContactsFromGoogleGroup(groupId) {
-  try {
-    var contacts = [];
-    if (!groupId || groupId === 'ALL_CONTACTS') {
-      contacts = ContactsApp.getContacts();
-    } else {
-      var group = ContactsApp.getContactGroupById(groupId);
-      if (group) {
-        contacts = group.getContacts();
-      } else {
-        throw new Error('Grup kontak tidak ditemukan.');
-      }
-    }
-
-    var result = [];
-    for (var i = 0; i < contacts.length; i++) {
-      var c = contacts[i];
-      var phones = c.getPhones();
-      var mainPhone = '';
-      if (phones.length > 0) {
-        mainPhone = phones[0].getPhoneNumber();
-      }
-      
-      // Hanya masukkan kontak yang memiliki nomor telepon
-      if (mainPhone) {
-        result.push({
-          name: c.getFullName() || 'No Name',
-          whatsapp: mainPhone
-        });
-      }
-    }
-    return { ok: true, data: result };
-  } catch (e) {
-    return { ok: false, message: e.toString() };
-  }
-}
-
 // Handler Pengiriman Webhook Server-Side untuk menghindari CORS Error
 function sendToN8nWebhook(webhookUrl, payload) {
   try {
@@ -1815,6 +1806,104 @@ function getWahaSettings() {
     waha_url: props.getProperty('WAHA_URL') || '',
     waha_api_key: props.getProperty('WAHA_API_KEY') || ''
   };
+}
+
+function getAppSettings() {
+  try {
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sheet = ss.getSheetByName('AppSettings');
+    if (!sheet) {
+      setupDatabase();
+      sheet = ss.getSheetByName('AppSettings');
+    }
+    var data = sheet.getDataRange().getValues();
+    var settingsMap = {};
+    for (var i = 1; i < data.length; i++) {
+      var key = data[i][0] ? data[i][0].toString().trim() : '';
+      var value = data[i][1] !== undefined && data[i][1] !== null ? data[i][1].toString().trim() : '';
+      if (key) {
+        settingsMap[key] = value;
+      }
+    }
+
+    var broadcastStartHour = parseInt(settingsMap.BROADCAST_START_HOUR, 10);
+    var broadcastEndHour = parseInt(settingsMap.BROADCAST_END_HOUR, 10);
+
+    if (isNaN(broadcastStartHour)) broadcastStartHour = 5;
+    if (isNaN(broadcastEndHour)) broadcastEndHour = 22;
+
+    return {
+      ok: true,
+      data: {
+        broadcast_start_hour: broadcastStartHour,
+        broadcast_end_hour: broadcastEndHour
+      }
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      message: err.toString(),
+      data: {
+        broadcast_start_hour: 5,
+        broadcast_end_hour: 22
+      }
+    };
+  }
+}
+
+function saveAppSettings(settings) {
+  try {
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sheet = ss.getSheetByName('AppSettings');
+    if (!sheet) {
+      setupDatabase();
+      sheet = ss.getSheetByName('AppSettings');
+    }
+
+    var now = new Date().toISOString();
+    var rows = [
+      ['BROADCAST_START_HOUR', String(parseInt(settings.broadcast_start_hour, 10) || 5), now],
+      ['BROADCAST_END_HOUR', String(parseInt(settings.broadcast_end_hour, 10) || 22), now]
+    ];
+
+    sheet.clearContents();
+    sheet.getRange(1, 1, 1, 3).setValues([['Key', 'Value', 'Updated At']]);
+    sheet.getRange(2, 1, rows.length, 3).setValues(rows);
+
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, message: err.toString() };
+  }
+}
+
+function getBroadcastWindowSettings_() {
+  var res = getAppSettings();
+  if (res && res.ok && res.data) {
+    return {
+      startHour: parseInt(res.data.broadcast_start_hour, 10) || 5,
+      endHour: parseInt(res.data.broadcast_end_hour, 10) || 22
+    };
+  }
+  return {
+    startHour: 5,
+    endHour: 22
+  };
+}
+
+function isTimeWithinBroadcastWindow_(dateObj, startHour, endHour) {
+  var hour = dateObj.getHours();
+  return hour >= startHour && hour < endHour;
+}
+
+function formatBroadcastWindowLabel_(startHour, endHour) {
+  return String(startHour) + ':00 - ' + String(endHour) + ':00';
+}
+
+function moveToNextBroadcastDay_(timeMs, startHour) {
+  var nextDate = new Date(timeMs);
+  nextDate.setDate(nextDate.getDate() + 1);
+  nextDate.setHours(startHour, 0, 0, 0);
+  return nextDate.getTime();
 }
 
 function saveWahaSettings(url, apiKey) {
@@ -1987,134 +2076,36 @@ function mintaIzinGoogle() {
   }
 }
 
-// Mengambil kontak dari Google Contacts dan menyimpannya ke Sheets secara aman (Anti-Duplikasi & JSON-Safe)
-// Berjalan secara native di sisi user yang sedang login di browser (executeAs: USER_ACCESSING)
-function importGoogleContacts(linkedCSNumber) {
+/**
+ * Memverifikasi kredensial login pengguna di database Google Sheets
+ */
+function loginUser(username, password) {
   try {
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-    var sheet = ss.getSheetByName('Leads');
+    var sheet = ss.getSheetByName('Users');
     if (!sheet) {
-      setupDatabase();
-      sheet = ss.getSheetByName('Leads');
+      return { ok: false, message: 'Database Users belum dikonfigurasi!' };
     }
     
-    // Ambil kontak menggunakan ContactsApp (100% Native, Tanpa Advanced Service People API!)
-    var contacts;
-    try {
-      contacts = ContactsApp.getContacts();
-    } catch (err) {
-      throw new Error('Gagal mengakses Google Contacts. Pastikan Anda telah menyetujui izin kontak: ' + err.toString());
-    }
-
-    if (contacts.length === 0) {
-      return { ok: true, importedCount: 0, message: 'Tidak ada kontak yang ditemukan di Google Contacts Anda.' };
-    }
-
-    var data = sheet.getDataRange().getValues();
-    var headers = data[0];
+    var users = getSheetDataAsObjects(sheet);
+    var inputHash = hashPassword(password);
     
-    var emailColIndex = headers.indexOf('Email');
-    if (emailColIndex === -1) {
-      sheet.getRange(1, headers.length + 1).setValue('Email');
-      data = sheet.getDataRange().getValues();
-      headers = data[0];
-      emailColIndex = headers.indexOf('Email');
-    }
-
-    // Ambil semua WhatsApp & Email yang sudah terdaftar di database untuk menghindari duplikat
-    var existingPhones = {};
-    var existingEmails = {};
-    for (var i = 1; i < data.length; i++) {
-      var phoneVal = data[i][2]; // Kolom WhatsApp (index 2)
-      var emailVal = data[i][emailColIndex]; // Kolom Email
-      
-      if (phoneVal) {
-        existingPhones[normalizePhoneNumber(phoneVal)] = true;
-      }
-      if (emailVal) {
-        existingEmails[emailVal.toString().toLowerCase().trim()] = true;
-      }
-    }
-
-    var now = new Date().toISOString();
-    var importedCount = 0;
-    var rowsToAdd = [];
-
-    // Tentukan nomor CS tujuan alokasi
-    var finalOwner = linkedCSNumber ? normalizePhoneNumber(linkedCSNumber) : '';
-
-    for (var j = 0; j < contacts.length; j++) {
-      var person = contacts[j];
-      
-      // 1. Ambil Nama
-      var name = person.getFullName() || 'No Name';
-
-      // 2. Ambil Nomor Telepon
-      var phones = person.getPhones();
-      var phone = '';
-      if (phones.length > 0) {
-        phone = phones[0].getPhoneNumber() || '';
-      }
-      var normalizedPhone = phone ? normalizePhoneNumber(phone) : '';
-
-      // 3. Ambil Email
-      var emails = person.getEmails();
-      var email = '';
-      if (emails.length > 0) {
-        email = emails[0].getAddress() || '';
-      }
-      var cleanEmail = email.toLowerCase().trim();
-
-      // Lewati jika kontak tidak memiliki nomor telepon sama sekali
-      if (!normalizedPhone) continue;
-
-      // Cek Duplikasi: Lewati jika nomor telepon atau email sudah ada di database CRM
-      var isPhoneDuplicate = existingPhones[normalizedPhone];
-      var isEmailDuplicate = cleanEmail ? existingEmails[cleanEmail] : false;
-
-      // PERBAIKAN BUG: Gunakan !isEmailDuplicate agar kontak baru yang email-nya belum terdaftar bisa masuk
-      if (!isPhoneDuplicate && !isEmailDuplicate) {
-        var id = 'L' + Utilities.getUuid().substring(0, 8).toUpperCase();
-        
-        var newRow = [
-          id,
-          name,
-          normalizedPhone,
-          'Google Contacts', // Tag Sumber
-          finalOwner,        // Owner WhatsApp (Otomatis terisi nomor CS yang melakukan sync)
-          now,               // Created At
-          '',                // Last Broadcast At
-          'Unchecked',       // Number Status
-          '',                // Last Number Check At
-          '',                // Inactive Reason
-          cleanEmail         // Email
-        ];
-        
-        rowsToAdd.push(newRow);
-        
-        // Tandai sebagai terdaftar lokal agar tidak ganda di dalam batch yang sama
-        existingPhones[normalizedPhone] = true;
-        if (cleanEmail) {
-          existingEmails[cleanEmail] = true;
+    for (var i = 0; i < users.length; i++) {
+      var user = users[i];
+      if (user.username && user.username.toString().trim().toLowerCase() === username.trim().toLowerCase()) {
+        if (user.password && user.password.toString().trim() === inputHash) {
+          var userPayload = {
+            id: user.id ? user.id.toString() : '',
+            username: user.username.toString(),
+            role: user.role ? user.role.toString() : 'Customer Service',
+            linked_cs_number: user.linked_cs_number ? user.linked_cs_number.toString() : ''
+          };
+          return { ok: true, user: userPayload };
         }
-        importedCount++;
       }
     }
-
-    // Tulis data baru secara bulk (sekaligus) ke Google Sheets
-    if (rowsToAdd.length > 0) {
-      var startRow = sheet.getLastRow() + 1;
-      sheet.getRange(startRow, 1, rowsToAdd.length, headers.length).setValues(rowsToAdd);
-    }
-
-    return { ok: true, importedCount: importedCount };
-  } catch (err) {
-    return { ok: false, message: err.toString() };
+    return { ok: false, message: 'Username atau password Anda salah!' };
+  } catch (error) {
+    return { ok: false, message: 'Gagal login: ' + error.toString() };
   }
-}
-
-// Fungsi pembantu untuk memaksa Google memunculkan dialog otorisasi di editor GAS
-function pemicuOtorisasiKontak() {
-  var test = People.People.Connections.list('people/me', { pageSize: 1 });
-  Logger.log('Otorisasi berhasil dikonfirmasi! Kontak Anda aman terhubung.');
 }
